@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>다름달음 QR 행사몰</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f3f4f6;color:#222;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",Arial,sans-serif}
+button,input{font:inherit}
+.app{max-width:680px;margin:0 auto;min-height:100vh;background:#fff;padding-bottom:100px}
+.header{padding:28px 20px 24px;text-align:center;border-bottom:1px solid #eee;background:#fff}
+.logo{font-size:24px;font-weight:900;letter-spacing:-1px}
+.header h1{margin:12px 0 5px;font-size:25px;letter-spacing:-1px}
+.header p{margin:0;color:#777;font-size:14px}
+.banner{margin:16px;padding:13px 15px;border-radius:12px;background:#fff7d6;color:#725d00;font-size:13px;line-height:1.5}
+.products{padding:0 16px}
+.loading-msg{padding:60px 0;text-align:center;color:#999;font-size:14px}
+.card{border:1px solid #e8e8e8;border-radius:16px;margin:12px 0;padding:14px;overflow:hidden}
+.product-image{width:100%;aspect-ratio:1.5;border-radius:12px;background:linear-gradient(135deg,#f5f5f5,#e7e7e7);display:flex;align-items:center;justify-content:center;font-size:48px;overflow:hidden}
+.product-name{margin-top:13px;font-size:19px;font-weight:800;letter-spacing:-.5px}
+.product-desc{margin-top:4px;font-size:13px;color:#777}
+.price{display:flex;align-items:center;gap:8px;margin-top:10px}
+.normal{text-decoration:line-through;color:#aaa;font-size:14px}
+.sale{font-size:21px;font-weight:900}
+.stock{margin-top:5px;color:#888;font-size:12px}
+.action-row{display:flex;align-items:center;justify-content:space-between;margin-top:13px}
+.qty{display:flex;align-items:center;border:1px solid #ddd;border-radius:10px;overflow:hidden}
+.qty button{width:36px;height:36px;border:0;background:#fff;font-size:20px}
+.qty button:disabled{opacity:.3}
+.qty span{min-width:36px;text-align:center;font-weight:800}
+.add{border:0;border-radius:10px;background:#111;color:#fff;padding:10px 18px;font-weight:800}
+.add:disabled{opacity:.3}
+.cart{margin:20px 16px 0;padding:18px;border-radius:16px;background:#f8f8f8}
+.cart h2{font-size:18px;margin:0 0 10px}
+.empty{padding:14px 0;color:#888;font-size:14px}
+.cart-line{display:flex;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid #e6e6e6;font-size:14px}
+.cart-line:last-child{border-bottom:0}
+.cart-name{flex:1}
+.summary{margin-top:13px;padding-top:13px;border-top:1px solid #ddd}
+.summary-row{display:flex;justify-content:space-between;padding:4px 0;font-size:14px;color:#555}
+.summary-row.total{margin-top:7px;padding-top:11px;border-top:1px solid #ddd;color:#222;font-size:18px;font-weight:900}
+.checkout{width:100%;margin-top:14px;border:0;border-radius:12px;background:#111;color:#fff;padding:15px;font-weight:900;font-size:16px}
+.checkout:disabled{opacity:.35}
+.footer{padding:24px 20px;text-align:center;color:#999;font-size:11px;line-height:1.6}
+.legal{margin-top:10px;padding-top:10px;border-top:1px solid #eee;color:#aaa}
+.legal a{color:#aaa;text-decoration:underline}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.sheet{width:min(680px,100%);max-height:92vh;overflow:auto;background:#fff;border-radius:20px 20px 0 0;padding:20px}
+.sheet-head{display:flex;justify-content:space-between;align-items:center}
+.sheet h2{margin:0;font-size:20px}
+.close{border:0;background:#eee;border-radius:50%;width:34px;height:34px}
+.form-label{display:block;margin:14px 0 6px;font-size:13px;font-weight:800}
+.input{width:100%;padding:13px;border:1px solid #ddd;border-radius:10px;outline:none}
+.input:focus{border-color:#111}
+.address-row{display:flex;gap:8px}
+.address-row .input{flex:1}
+.address-search{border:0;border-radius:10px;background:#111;color:#fff;padding:0 14px;font-weight:800;white-space:nowrap}
+.pay-methods{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.pay-btn{border:0;border-radius:12px;padding:15px;font-weight:900;font-size:15px;width:100%}
+.pay-btn:disabled{opacity:.5}
+.test-note{margin-top:12px;padding:11px;border-radius:10px;background:#fff7d6;color:#725d00;font-size:12px;line-height:1.5}
+.complete{text-align:center;padding:35px 20px}
+.complete-icon{font-size:50px}
+.order-no{font-size:25px;font-weight:900;margin:12px 0}
+.complete-box{margin:20px 0;padding:16px;background:#f7f7f7;border-radius:12px;text-align:left}
+.primary{width:100%;border:0;border-radius:11px;background:#111;color:#fff;padding:14px;font-weight:900}
+.secondary{width:100%;margin-top:9px;border:1px solid #ddd;border-radius:11px;background:#fff;padding:13px;font-weight:800}
+.toast{position:fixed;left:50%;bottom:25px;transform:translateX(-50%);background:#111;color:#fff;padding:11px 15px;border-radius:999px;font-size:13px;z-index:50;display:none}
+.small{font-size:12px;color:#888}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <div class="logo">다름달음</div>
+    <h1>박람회 특별 판매</h1>
+    <p>QR로 바로 주문하고 받아보세요</p>
+  </header>
+
+  <div class="banner" id="banner" style="display:none"></div>
+
+  <section class="products" id="products"><div class="loading-msg">상품을 불러오는 중...</div></section>
+
+  <section class="cart">
+    <h2>🛒 장바구니</h2>
+    <div id="cartItems" class="empty">상품을 담아주세요.</div>
+    <div class="summary">
+      <div class="summary-row"><span>상품금액</span><strong id="productTotal">0원</strong></div>
+      <div class="summary-row"><span>배송비</span><strong id="shipping">0원</strong></div>
+      <div class="summary-row total"><span>총 결제금액</span><strong id="grandTotal">0원</strong></div>
+    </div>
+    <button id="checkout" class="checkout" disabled>주문정보 입력</button>
+  </section>
+
+  <div class="footer">
+    다름달음 QR 행사몰<br>
+    주문 관련 문의는 현장 직원에게 말씀해주세요.
+    <!-- 전자상거래법상 필수 표시사항입니다. 통신판매업신고번호와 약관 링크를 채워주세요. -->
+    <div class="legal">
+      다름달음 · 대표 이상현 · 사업자등록번호 106-88-01737<br>
+      통신판매업신고번호 [신고번호 입력] · 경기 남양주시 진건읍 송능리 191-2<br>
+      <a href="#" target="_blank">이용약관</a> · <a href="#" target="_blank">개인정보처리방침</a>
+    </div>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+<div id="toast" class="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.portone.io/v2/browser-sdk.js"></script>
+<script src="https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+<script>
+// ============================================================
+// 설정 — Supabase 프로젝트 정보로 교체하세요 (설치_가이드.md 참고)
+// ============================================================
+const SUPABASE_URL = "https://dvbqfjjpshddkpcmzmyr.supabase.co/rest/v1/";
+const SUPABASE_ANON_KEY = "sb_publishable_Y03Q631sspU7WA_oKYA3uA_bko0vVlZ";
+const VERIFY_FN_URL = SUPABASE_URL + "/functions/v1/verify-payment";
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const PAY_META = {
+  CARD:     { label: "신용·체크카드", bg: "#111111", fg: "#ffffff" },
+  KAKAOPAY: { label: "카카오페이",     bg: "#FEE500", fg: "#191600" },
+  NAVERPAY: { label: "네이버페이",     bg: "#03C75A", fg: "#ffffff" },
+  TOSSPAY:  { label: "토스페이",       bg: "#1B64DA", fg: "#ffffff" },
+};
+
+let PRODUCTS = [];
+let SETTINGS = null;
+let isPaying = false;
+const cart = {};
+
+const won = n => Number(n||0).toLocaleString("ko-KR") + "원";
+function esc(s){
+  return String(s??"").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
+}
+
+// ============================================================
+// 데이터 로딩
+// ============================================================
+async function loadAll(){
+  const [{data: products, error: pErr}, {data: settingsRow, error: sErr}] = await Promise.all([
+    sb.from("qrshop_products").select("*").eq("is_active", true).order("display_order", {ascending:true}),
+    sb.from("qrshop_settings").select("*").eq("id", 1).single()
+  ]);
+  if(pErr) console.error("상품 조회 오류:", pErr);
+  if(sErr) console.error("설정 조회 오류:", sErr);
+  PRODUCTS = products || [];
+  SETTINGS = settingsRow || { shipping_base:0, shipping_free_threshold:0, payment_methods:{}, banner_message:"" };
+  renderBanner();
+  renderProducts();
+  renderCart();
+}
+
+function renderBanner(){
+  const el = document.getElementById("banner");
+  if(SETTINGS && SETTINGS.banner_message){
+    el.style.display = "block";
+    el.textContent = SETTINGS.banner_message;
+  } else {
+    el.style.display = "none";
+  }
+}
+
+function cartQtyFor(id){
+  return Object.values(cart).filter(x=>x.id===id).reduce((s,x)=>s+x.quantity,0);
+}
+
+function renderProducts(){
+  const box = document.getElementById("products");
+  if(!PRODUCTS.length){
+    box.innerHTML = '<div class="loading-msg">현재 준비된 상품이 없습니다.</div>';
+    return;
+  }
+  box.innerHTML = PRODUCTS.map(p => `
+    <article class="card">
+      <div class="product-image">${p.image_url ? `<img src="${esc(p.image_url)}" style="width:100%;height:100%;object-fit:cover">` : esc(p.emoji||"📦")}</div>
+      <div class="product-name">${esc(p.name)}</div>
+      <div class="product-desc">${esc(p.description||"")}</div>
+      ${p.options && p.options.length ? `<div style="margin-top:10px"><label class="small" style="display:block;margin-bottom:5px;font-weight:800">옵션 선택</label><select id="opt-${p.id}" class="input" onchange="optionChanged('${p.id}')">${p.options.map((o,i)=>`<option value="${i}">${esc((o.name?o.name+" ":"")+o.value)}${o.additionalPrice?` (+${won(o.additionalPrice)})`:""}</option>`).join("")}</select></div>` : ""}
+      <div class="price">
+        ${p.price_normal > p.price_sale ? `<span class="normal">${won(p.price_normal)}</span>` : ""}
+        <span class="sale">${won(p.price_sale)}</span>
+      </div>
+      <div class="stock">${p.stock>0 ? `재고 ${p.stock}개` : `<b style="color:#c00">일시 품절</b>`}</div>
+      <div class="action-row">
+        <div class="qty">
+          <button onclick="changeQty('${p.id}',-1)" ${p.stock<=0?"disabled":""}>−</button>
+          <span id="qty-${p.id}">${cartQtyFor(p.id)}</span>
+          <button onclick="changeQty('${p.id}',1)" ${p.stock<=0?"disabled":""}>+</button>
+        </div>
+        <button class="add" onclick="changeQty('${p.id}',1)" ${p.stock<=0?"disabled":""}>담기</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+function getSelectedOption(id){
+  const p = PRODUCTS.find(x=>x.id===id);
+  if(!p || !p.options || !p.options.length) return null;
+  const idx = Number(document.getElementById("opt-"+id)?.value || 0);
+  return p.options[idx] || p.options[0] || null;
+}
+function optionChanged(){ toast("선택 옵션이 변경되었습니다."); }
+function cartKey(id, option){
+  return option ? id+"::"+option.value+"::"+(option.additionalPrice||0) : id;
+}
+
+function changeQty(id, delta){
+  const p = PRODUCTS.find(x=>x.id===id);
+  if(!p) return;
+  const option = getSelectedOption(id);
+  const key = cartKey(id, option);
+  let q = (cart[key]?.quantity || 0) + delta;
+  q = Math.max(0, Math.min(q, p.stock));
+  if(q === 0) delete cart[key];
+  else cart[key] = { id: p.id, quantity: q, option: option ? {...option} : null };
+  const qtyEl = document.getElementById("qty-"+id);
+  if(qtyEl) qtyEl.textContent = cartQtyFor(id);
+  renderCart();
+  if(delta>0) toast(p.name + (option?` · ${option.value}`:"") + "을(를) 담았습니다.");
+}
+
+function renderCart(){
+  const entries = Object.entries(cart);
+  const box = document.getElementById("cartItems");
+  let productTotal = 0;
+
+  if(!entries.length){
+    box.className = "empty"; box.innerHTML = "상품을 담아주세요.";
+  } else {
+    box.className = "";
+    box.innerHTML = entries.map(([key,line])=>{
+      const p = PRODUCTS.find(x=>x.id===line.id);
+      if(!p) return "";
+      const unit = p.price_sale + (line.option?.additionalPrice||0);
+      const sub = unit*line.quantity;
+      productTotal += sub;
+      return `<div class="cart-line">
+        <div class="cart-name">
+          ${esc(p.name)}
+          ${line.option?`<div class="small">옵션: ${esc((line.option.name?line.option.name+" ":"")+line.option.value)}</div>`:""}
+          <div class="small">수량 ${line.quantity} × ${won(unit)}</div>
+        </div>
+        <div style="text-align:right">
+          <strong>${won(sub)}</strong>
+          <div style="margin-top:5px"><button class="small" style="border:0;background:#eee;border-radius:6px;padding:3px 7px" onclick="removeCartLine('${encodeURIComponent(key)}')">삭제</button></div>
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  const base = SETTINGS?.shipping_base ?? 0;
+  const freeThreshold = SETTINGS?.shipping_free_threshold ?? 0;
+  const shipping = productTotal===0 ? 0 : (productTotal>=freeThreshold ? 0 : base);
+  const total = productTotal + shipping;
+  document.getElementById("productTotal").textContent = won(productTotal);
+  document.getElementById("shipping").textContent = (shipping===0 && productTotal>0) ? "무료" : won(shipping);
+  document.getElementById("grandTotal").textContent = won(total);
+  document.getElementById("checkout").disabled = !entries.length;
+}
+
+function removeCartLine(encodedKey){
+  delete cart[decodeURIComponent(encodedKey)];
+  renderCart();
+  toast("장바구니에서 삭제했습니다.");
+}
+
+document.getElementById("checkout").addEventListener("click", openCheckout);
+
+// ============================================================
+// 주문/결제
+// ============================================================
+function openCheckout(){
+  const methods = (SETTINGS && SETTINGS.payment_methods) || {};
+  const availableMethods = Object.keys(PAY_META).filter(k => methods[k]?.enabled && methods[k]?.channel_key);
+
+  document.getElementById("modalRoot").innerHTML = `
+    <div class="modal">
+      <div class="sheet">
+        <div class="sheet-head">
+          <h2>주문정보</h2>
+          <button class="close" onclick="closeModal()">×</button>
+        </div>
+
+        <label class="form-label">받는 분 이름 *</label>
+        <input id="customerName" class="input" placeholder="홍길동">
+
+        <label class="form-label">휴대폰 번호 *</label>
+        <input id="customerPhone" class="input" placeholder="010-1234-5678" inputmode="tel">
+
+        <label class="form-label">주소 *</label>
+        <div class="address-row">
+          <input id="postcode" class="input" placeholder="우편번호" readonly>
+          <button type="button" class="address-search" onclick="openAddressSearch()">주소 검색</button>
+        </div>
+        <input id="address" class="input" placeholder="주소 검색 버튼을 눌러주세요" readonly style="margin-top:8px">
+        <input id="addressExtra" class="input" placeholder="참고항목(선택)" readonly style="margin-top:8px">
+
+        <label class="form-label">상세주소</label>
+        <input id="addressDetail" class="input" placeholder="상세주소">
+
+        <label class="form-label">결제 수단 *</label>
+        ${
+          availableMethods.length
+          ? `<div class="pay-methods">${availableMethods.map(m => `<button class="pay-btn" style="background:${PAY_META[m].bg};color:${PAY_META[m].fg}" onclick="startPayment('${m}')">${PAY_META[m].label}</button>`).join("")}</div>`
+          : `<div class="test-note">아직 이용 가능한 결제 수단이 없습니다. 관리자에게 문의해주세요.</div>`
+        }
+        <div id="payStatus"></div>
+      </div>
+    </div>
+  `;
+}
+
+function closeModal(){ document.getElementById("modalRoot").innerHTML = ""; }
+
+function openAddressSearch(){
+  if(typeof daum === "undefined" || !daum.Postcode){
+    alert("주소 검색 서비스를 불러오지 못했습니다. 인터넷 연결을 확인해주세요.");
+    return;
+  }
+  new daum.Postcode({
+    oncomplete: function(data){
+      let extra = "";
+      if(data.userSelectedType === "R"){
+        extra = data.bname && /[동|로|가]$/g.test(data.bname) ? data.bname : "";
+        if(data.buildingName && data.apartment === "Y") extra += (extra ? ", " : "") + data.buildingName;
+      } else {
+        extra = data.jibunAddress || "";
+      }
+      document.getElementById("postcode").value = data.zonecode || "";
+      document.getElementById("address").value = data.roadAddress || data.jibunAddress || "";
+      document.getElementById("addressExtra").value = extra;
+      document.getElementById("addressDetail").focus();
+    }
+  }).open();
+}
+
+function buildOrderName(items){
+  if(!items.length) return "다름달음 주문";
+  return items.length>1 ? `${items[0].name} 외 ${items.length-1}건` : items[0].name;
+}
+function buildRedirectUrl(orderId){
+  return location.origin + location.pathname + "?orderId=" + orderId;
+}
+function setPayStatus(msg){
+  const el = document.getElementById("payStatus");
+  if(el) el.innerHTML = msg ? `<div class="test-note">${esc(msg)}</div>` : "";
+}
+function makeOrderNumber(){
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const day = String(d.getDate()).padStart(2,"0");
+  const random = Math.floor(Math.random()*9000)+1000;
+  return `DDM-${y}${m}${day}-${random}`;
+}
+
+async function startPayment(method){
+  if(isPaying) return;
+  const name = document.getElementById("customerName").value.trim();
+  const phone = document.getElementById("customerPhone").value.trim();
+  const postcode = document.getElementById("postcode").value.trim();
+  const address = document.getElementById("address").value.trim();
+  const addressExtra = document.getElementById("addressExtra").value.trim();
+  const addressDetail = document.getElementById("addressDetail").value.trim();
+
+  if(!name){ alert("받는 분 이름을 입력해주세요."); return; }
+  if(!phone){ alert("휴대폰 번호를 입력해주세요."); return; }
+  if(!address){ alert("주소를 입력해주세요."); return; }
+
+  const items = Object.values(cart).map(line=>{
+    const p = PRODUCTS.find(x=>x.id===line.id);
+    const unitPrice = p.price_sale + (line.option?.additionalPrice||0);
+    return {
+      product_id: p.id,
+      name: p.name,
+      option: line.option ? {...line.option} : null,
+      unitPrice,
+      quantity: line.quantity,
+      subtotal: unitPrice*line.quantity
+    };
+  });
+  if(!items.length){ alert("장바구니가 비어 있습니다."); return; }
+
+  const productTotal = items.reduce((s,x)=>s+x.subtotal,0);
+  const base = SETTINGS?.shipping_base ?? 0;
+  const freeThreshold = SETTINGS?.shipping_free_threshold ?? 0;
+  const shipping = productTotal>=freeThreshold ? 0 : base;
+  const totalAmount = productTotal + shipping;
+
+  isPaying = true;
+  setPayStatus("주문을 생성하는 중...");
+
+  const orderId = crypto.randomUUID();
+  let orderNumber = makeOrderNumber();
+  let insertError = null;
+
+  for(let i=0; i<3; i++){
+    const { error } = await sb.from("qrshop_orders").insert({
+      id: orderId,
+      order_number: orderNumber,
+      customer_name: name,
+      customer_phone: phone,
+      postcode, address, address_extra: addressExtra, address_detail: addressDetail,
+      product_total: productTotal,
+      shipping_fee: shipping,
+      total_amount: totalAmount,
+      payment_method: method,
+      payment_status: "PENDING"
+    });
+    if(!error){ insertError = null; break; }
+    insertError = error;
+    if(error.code === "23505"){ orderNumber = makeOrderNumber(); continue; }
+    break;
+  }
+  if(insertError){
+    console.error(insertError);
+    isPaying = false; setPayStatus("");
+    alert("주문 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    return;
+  }
+
+  const itemRows = items.map(it => ({
+    order_id: orderId,
+    product_id: it.product_id,
+    product_name: it.name,
+    option_name: it.option?.name || "",
+    option_value: it.option?.value || "",
+    option_additional_price: it.option?.additionalPrice || 0,
+    unit_price: it.unitPrice,
+    quantity: it.quantity,
+    subtotal: it.subtotal
+  }));
+  const { error: itemsError } = await sb.from("qrshop_order_items").insert(itemRows);
+  if(itemsError){
+    console.error(itemsError);
+    isPaying = false; setPayStatus("");
+    alert("주문 상품 정보 저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    return;
+  }
+
+  // 새로고침해도 결제 확인을 재시도할 수 있도록 orderId를 주소에 남겨둠
+  history.replaceState({}, "", buildRedirectUrl(orderId));
+
+  const methodConf = SETTINGS.payment_methods[method];
+  const isCard = method === "CARD";
+  setPayStatus("결제창을 여는 중...");
+
+  try {
+    const response = await PortOne.requestPayment({
+      storeId: SETTINGS.portone_store_id,
+      channelKey: methodConf.channel_key,
+      paymentId: `qrshop-${orderId}`,
+      orderName: buildOrderName(items),
+      totalAmount,
+      currency: "CURRENCY_KRW",
+      payMethod: isCard ? "CARD" : "EASY_PAY",
+      ...(isCard ? {} : { easyPay: { easyPayProvider: method } }),
+      customer: { fullName: name, phoneNumber: phone },
+      redirectUrl: buildRedirectUrl(orderId)
+    });
+
+    if(response && response.code){
+      // 팝업/iframe 방식(주로 PC)에서 결제가 실패·취소된 경우.
+      // 모바일 리다이렉트 방식은 페이지 자체가 이동했다가 돌아오므로 아래 init()에서 처리됩니다.
+      isPaying = false; setPayStatus("");
+      alert("결제가 완료되지 않았습니다: " + (response.message || "취소되었거나 실패했습니다."));
+      return;
+    }
+    await finalizePayment(orderId);
+  } catch(e){
+    console.error(e);
+    isPaying = false; setPayStatus("");
+    alert("결제창을 여는 중 오류가 발생했습니다. 다시 시도해주세요.");
+  }
+}
+
+async function finalizePayment(orderId){
+  setPayStatus("결제 확인 중...");
+  try {
+    const res = await fetch(VERIFY_FN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY, "Authorization": "Bearer " + SUPABASE_ANON_KEY },
+      body: JSON.stringify({ orderId })
+    });
+    const result = await res.json();
+    isPaying = false;
+    if(result.ok){
+      for(const key of Object.keys(cart)) delete cart[key];
+      history.replaceState({}, "", location.pathname);
+      showComplete(result.order);
+      loadAll();
+    } else {
+      setPayStatus("");
+      showPaymentFailed(result.error || "결제 확인에 실패했습니다.");
+    }
+  } catch(e){
+    console.error(e);
+    isPaying = false; setPayStatus("");
+    showPaymentFailed("네트워크 오류로 결제 확인에 실패했습니다.");
+  }
+}
+
+function showComplete(order){
+  document.getElementById("modalRoot").innerHTML = `
+    <div class="modal">
+      <div class="sheet">
+        <div class="complete">
+          <div class="complete-icon">✅</div>
+          <h2>주문이 완료되었습니다</h2>
+          <div class="order-no">${esc(order.order_number)}</div>
+          <div class="complete-box">
+            <div class="summary-row"><span>받는 분</span><strong>${esc(order.customer_name)}</strong></div>
+            <div class="summary-row"><span>상품금액</span><strong>${won(order.product_total)}</strong></div>
+            <div class="summary-row"><span>배송비</span><strong>${order.shipping_fee===0?"무료":won(order.shipping_fee)}</strong></div>
+            <div class="summary-row total"><span>총 결제금액</span><strong>${won(order.total_amount)}</strong></div>
+          </div>
+          <p class="small">주문번호를 꼭 저장해주세요.</p>
+          <button class="primary" onclick="location.href = location.pathname">확인</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function showPaymentFailed(message){
+  document.getElementById("modalRoot").innerHTML = `
+    <div class="modal">
+      <div class="sheet">
+        <div class="complete">
+          <div class="complete-icon">⚠️</div>
+          <h2>결제를 확인하지 못했습니다</h2>
+          <p class="small">${esc(message)}</p>
+          <button class="primary" onclick="location.reload()">새로고침해서 다시 확인</button>
+          <button class="secondary" onclick="closeModal()">닫기</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function toast(message){
+  const el = document.getElementById("toast");
+  el.textContent = message;
+  el.style.display = "block";
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(()=>el.style.display="none", 1300);
+}
+
+// ============================================================
+// 초기화
+// ============================================================
+function subscribeRealtime(){
+  sb.channel("qrshop-public-changes")
+    .on("postgres_changes", { event: "*", schema: "public", table: "qrshop_products" }, () => loadAll())
+    .on("postgres_changes", { event: "*", schema: "public", table: "qrshop_settings" }, () => loadAll())
+    .subscribe();
+}
+
+(async function init(){
+  const params = new URLSearchParams(location.search);
+  const returningOrderId = params.get("orderId");
+
+  await loadAll();
+
+  if(returningOrderId){
+    document.getElementById("modalRoot").innerHTML = `
+      <div class="modal"><div class="sheet"><div class="complete">
+        <div class="complete-icon">⏳</div><h2>결제 확인 중...</h2>
+        <p class="small">잠시만 기다려주세요.</p>
+      </div></div></div>`;
+    await finalizePayment(returningOrderId);
+  }
+
+  subscribeRealtime();
+})();
+</script>
+</body>
+</html>
