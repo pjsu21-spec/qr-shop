@@ -17,7 +17,11 @@ button,input{font:inherit}
 .products{padding:0 16px}
 .loading-msg{padding:60px 0;text-align:center;color:#999;font-size:14px}
 .card{border:1px solid #e8e8e8;border-radius:16px;margin:12px 0;padding:14px;overflow:hidden}
-.product-image{width:100%;aspect-ratio:1.5;border-radius:12px;background:linear-gradient(135deg,#f5f5f5,#e7e7e7);display:flex;align-items:center;justify-content:center;font-size:48px;overflow:hidden}
+.product-image{width:100%;aspect-ratio:1.5;border-radius:12px;background:linear-gradient(135deg,#f5f5f5,#e7e7e7);display:flex;align-items:center;justify-content:center;font-size:48px;overflow:hidden;position:relative}
+.back-badge{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.65);color:#fff;font-size:11px;padding:4px 9px;border-radius:999px;font-weight:700;pointer-events:none}
+.lightbox-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:30;padding:24px}
+.lightbox-img{max-width:100%;max-height:80vh;border-radius:8px;display:block;margin:0 auto}
+.lightbox-close{position:absolute;top:-14px;right:-14px;width:34px;height:34px;border-radius:50%;border:0;background:#fff;font-size:18px}
 .product-name{margin-top:13px;font-size:19px;font-weight:800;letter-spacing:-.5px}
 .product-desc{margin-top:4px;font-size:13px;color:#777}
 .price{display:flex;align-items:center;gap:8px;margin-top:10px}
@@ -96,12 +100,8 @@ button,input{font:inherit}
   <div class="footer">
     다름달음 QR 행사몰<br>
     주문 관련 문의는 현장 직원에게 말씀해주세요.
-    <!-- 전자상거래법상 필수 표시사항입니다. 통신판매업신고번호와 약관 링크를 채워주세요. -->
-    <div class="legal">
-      다름달음 · 대표 이상현 · 사업자등록번호 106-88-01737<br>
-      통신판매업신고번호 [신고번호 입력] · 경기 남양주시 진건읍 송능리 191-2<br>
-      <a href="#" target="_blank">이용약관</a> · <a href="#" target="_blank">개인정보처리방침</a>
-    </div>
+    <!-- 아래 사업자정보는 admin.html의 "사업자정보" 탭에서 관리합니다. -->
+    <div class="legal" id="legalInfo"></div>
   </div>
 </div>
 
@@ -149,10 +149,11 @@ async function loadAll(){
   if(pErr) console.error("상품 조회 오류:", pErr);
   if(sErr) console.error("설정 조회 오류:", sErr);
   PRODUCTS = products || [];
-  SETTINGS = settingsRow || { shipping_base:0, shipping_free_threshold:0, payment_methods:{}, banner_message:"" };
+  SETTINGS = settingsRow || { shipping_base:0, shipping_free_threshold:0, payment_methods:{}, banner_message:"", legal_info:{} };
   renderBanner();
   renderProducts();
   renderCart();
+  renderLegal();
 }
 
 function renderBanner(){
@@ -163,6 +164,53 @@ function renderBanner(){
   } else {
     el.style.display = "none";
   }
+}
+
+// ============================================================
+// 사업자정보 / 약관·정책 (admin.html "사업자정보" 탭에서 관리)
+// ============================================================
+function renderLegal(){
+  const el = document.getElementById("legalInfo");
+  const L = (SETTINGS && SETTINGS.legal_info) || {};
+  const bizNoDigits = (L.business_reg_no || "").replace(/[^0-9]/g, "");
+
+  const links = [
+    L.terms_url ? `<a href="${esc(L.terms_url)}" target="_blank">이용약관</a>` : "",
+    L.privacy_url ? `<a href="${esc(L.privacy_url)}" target="_blank">개인정보처리방침</a>` : "",
+    L.shipping_info ? `<a href="#" onclick="showLegalDoc('shipping');return false;">배송정보</a>` : "",
+    L.return_info ? `<a href="#" onclick="showLegalDoc('return');return false;">교환/반품 안내</a>` : "",
+    L.withdrawal_info ? `<a href="#" onclick="showLegalDoc('withdrawal');return false;">청약철회 안내</a>` : "",
+    bizNoDigits ? `<a href="http://www.ftc.go.kr/bizCommPop.do?wrkr_no=${bizNoDigits}" target="_blank">사업자정보확인</a>` : "",
+  ].filter(Boolean).join(" · ");
+
+  if(!L.company_name && !L.business_reg_no){ el.innerHTML = ""; return; }
+
+  el.innerHTML = `
+    상호명 ${esc(L.company_name||"")} ${L.ceo_name?`· 대표 ${esc(L.ceo_name)}`:""}<br>
+    ${L.business_reg_no?`사업자등록번호 ${esc(L.business_reg_no)}`:""} ${L.mail_order_no?`· 통신판매업 신고번호 ${esc(L.mail_order_no)}`:""}<br>
+    ${esc(L.address||"")}<br>
+    ${L.cs_phone?`고객센터 ${esc(L.cs_phone)}`:""} ${L.cs_email?`· ${esc(L.cs_email)}`:""}
+    ${links ? `<div style="margin-top:8px">${links}</div>` : ""}
+  `;
+}
+
+function showLegalDoc(type){
+  const L = (SETTINGS && SETTINGS.legal_info) || {};
+  const map = {
+    shipping:   { title: "배송정보", body: L.shipping_info },
+    return:     { title: "교환/반품 안내", body: L.return_info },
+    withdrawal: { title: "청약철회 관련 안내", body: L.withdrawal_info },
+  };
+  const doc = map[type];
+  if(!doc || !doc.body) return;
+  document.getElementById("modalRoot").innerHTML = `
+    <div class="modal">
+      <div class="sheet">
+        <div class="sheet-head"><h2>${esc(doc.title)}</h2><button class="close" onclick="closeModal()">×</button></div>
+        <p class="small" style="white-space:pre-wrap;line-height:1.7;margin-top:12px;color:#444">${esc(doc.body)}</p>
+      </div>
+    </div>
+  `;
 }
 
 function cartQtyFor(id){
@@ -177,7 +225,10 @@ function renderProducts(){
   }
   box.innerHTML = PRODUCTS.map(p => `
     <article class="card">
-      <div class="product-image">${p.image_url ? `<img src="${esc(p.image_url)}" style="width:100%;height:100%;object-fit:cover">` : esc(p.emoji||"📦")}</div>
+      <div class="product-image" ${p.image_back_url ? `onclick="showBackImage('${p.id}')" style="cursor:pointer"` : ""}>
+        ${p.image_url ? `<img src="${esc(p.image_url)}" style="width:100%;height:100%;object-fit:cover">` : esc(p.emoji||"📦")}
+        ${p.image_back_url ? `<div class="back-badge">🔍 표시사항 보기</div>` : ""}
+      </div>
       <div class="product-name">${esc(p.name)}</div>
       <div class="product-desc">${esc(p.description||"")}</div>
       ${p.options && p.options.length ? `<div style="margin-top:10px"><label class="small" style="display:block;margin-bottom:5px;font-weight:800">옵션 선택</label><select id="opt-${p.id}" class="input" onchange="optionChanged('${p.id}')">${p.options.map((o,i)=>`<option value="${i}">${esc((o.name?o.name+" ":"")+o.value)}${o.additionalPrice?` (+${won(o.additionalPrice)})`:""}</option>`).join("")}</select></div>` : ""}
@@ -207,6 +258,19 @@ function getSelectedOption(id){
 function optionChanged(){ toast("선택 옵션이 변경되었습니다."); }
 function cartKey(id, option){
   return option ? id+"::"+option.value+"::"+(option.additionalPrice||0) : id;
+}
+
+function showBackImage(id){
+  const p = PRODUCTS.find(x=>x.id===id);
+  if(!p || !p.image_back_url) return;
+  document.getElementById("modalRoot").innerHTML = `
+    <div class="lightbox-overlay" onclick="closeModal()">
+      <div style="position:relative" onclick="event.stopPropagation()">
+        <button class="lightbox-close" onclick="closeModal()">×</button>
+        <img src="${esc(p.image_back_url)}" class="lightbox-img">
+      </div>
+    </div>
+  `;
 }
 
 function changeQty(id, delta){
