@@ -65,6 +65,10 @@ const PAY_META = {
   NAVERPAY: { label: "네이버페이" },
   TOSSPAY:  { label: "토스페이" },
 };
+function paymentMethodLabel(method){
+  if(method === "ONSITE") return "현장결제";
+  return PAY_META[method]?.label || method;
+}
 const TABS = [
   { id: "products", label: "상품 관리" },
   { id: "settings", label: "결제·배송 설정" },
@@ -349,8 +353,16 @@ async function loadSettings(){
 function renderSettingsTab(){
   const s = SETTINGS || {};
   const pm = s.payment_methods || {};
+  const mode = s.payment_mode || "ONLINE";
   const content = document.getElementById("tabContent");
   content.innerHTML = `
+    <div class="card">
+      <h3>결제 방식</h3>
+      <p class="small">박람회 등 현장에서 포스기로 직접 결제받는 동안은 "현장결제"로 바꿔두세요. 온라인 결제(포트원) 심사가 끝나면 다시 "온라인 결제"로 되돌리면 됩니다.</p>
+      <label class="label"><input type="radio" name="pm_mode" value="ONLINE" ${mode==="ONLINE"?"checked":""}> 온라인 결제 — 포트원(신용카드·간편결제)으로 즉시 결제</label>
+      <label class="label"><input type="radio" name="pm_mode" value="ONSITE" ${mode==="ONSITE"?"checked":""}> 현장결제 — 주문만 접수, 결제는 부스 포스기로 별도 진행</label>
+    </div>
+
     <div class="card">
       <h3>배송비</h3>
       <div class="row2">
@@ -391,6 +403,7 @@ async function saveSettings(){
     };
   });
   const payload = {
+    payment_mode: document.querySelector('input[name="pm_mode"]:checked')?.value || "ONLINE",
     shipping_base: Number(document.getElementById("st_base").value)||0,
     shipping_free_threshold: Number(document.getElementById("st_free").value)||0,
     banner_message: document.getElementById("st_banner").value.trim(),
@@ -451,6 +464,12 @@ function renderLegalTab(){
       <textarea id="lg_withdrawal" class="field" rows="5">${esc(L.withdrawal_info||"")}</textarea>
     </div>
 
+    <div class="card">
+      <h3>개인정보 수집·이용 동의 문구</h3>
+      <p class="small">비회원 주문 시 결제 전 체크박스로 노출되는 필수 동의 문구입니다. 비워두면 법정 보유기간(전자상거래법 기준)이 반영된 기본 문구가 자동으로 사용됩니다 — 보통은 그대로 두셔도 되고, 법무팀에서 문구를 지정해주셨다면 여기에 붙여넣으세요.</p>
+      <textarea id="lg_privacy_consent" class="field" rows="8" placeholder="비워두면 기본 문구가 사용됩니다.">${esc(L.privacy_consent_text||"")}</textarea>
+    </div>
+
     <button class="black-btn" style="width:100%;border:0;border-radius:10px;padding:13px;font-weight:800" onclick="saveLegalInfo()">사업자정보 저장</button>
   `;
 }
@@ -469,6 +488,7 @@ async function saveLegalInfo(){
     shipping_info: document.getElementById("lg_shipping").value.trim(),
     return_info: document.getElementById("lg_return").value.trim(),
     withdrawal_info: document.getElementById("lg_withdrawal").value.trim(),
+    privacy_consent_text: document.getElementById("lg_privacy_consent").value.trim(),
   };
   const { error } = await sb.from("qrshop_settings").update({ legal_info, updated_at: new Date().toISOString() }).eq("id",1);
   if(error){ alert("저장 실패: " + error.message); return; }
@@ -486,12 +506,14 @@ async function loadOrders(){
   renderOrdersTab();
 }
 
+let orderSearch = "";
+
 function renderOrdersTab(){
   const content = document.getElementById("tabContent");
-  const filtered = orderFilter==="ALL" ? ORDERS : ORDERS.filter(o=>o.payment_status===orderFilter);
   content.innerHTML = `
     <div class="orders-toolbar">
-      <select onchange="orderFilter=this.value; renderOrdersTab()">
+      <input class="field" style="flex:1;min-width:160px" id="orderSearchInput" placeholder="이름·연락처·주문번호 검색" value="${escAttr(orderSearch)}" oninput="orderSearch=this.value; renderOrderList();">
+      <select onchange="orderFilter=this.value; renderOrderList()">
         <option value="ALL" ${orderFilter==="ALL"?"selected":""}>전체 (${ORDERS.length})</option>
         <option value="PAID" ${orderFilter==="PAID"?"selected":""}>결제완료 (${ORDERS.filter(o=>o.payment_status==="PAID").length})</option>
         <option value="PENDING" ${orderFilter==="PENDING"?"selected":""}>결제대기 (${ORDERS.filter(o=>o.payment_status==="PENDING").length})</option>
@@ -500,21 +522,36 @@ function renderOrdersTab(){
       <button onclick="loadOrders()">🔄 새로고침</button>
       <button onclick="exportOrdersCSV()">⬇ CSV 다운로드</button>
     </div>
-    ${filtered.length ? filtered.map(orderCard).join("") : '<p class="small">해당하는 주문이 없습니다.</p>'}
+    <div id="orderListBox"></div>
   `;
+  renderOrderList();
+}
+
+function getFilteredOrders(){
+  const q = orderSearch.trim().toLowerCase();
+  return ORDERS
+    .filter(o => orderFilter==="ALL" || o.payment_status===orderFilter)
+    .filter(o => !q || [o.order_number, o.customer_name, o.customer_phone].some(v => (v||"").toLowerCase().includes(q)));
+}
+
+function renderOrderList(){
+  const box = document.getElementById("orderListBox");
+  const filtered = getFilteredOrders();
+  box.innerHTML = filtered.length ? filtered.map(orderCard).join("") : '<p class="small">해당하는 주문이 없습니다.</p>';
 }
 
 function orderCard(o){
   const pillClass = o.payment_status==="PAID" ? "pill-paid" : o.payment_status==="FAILED" ? "pill-failed" : "pill-pending";
   const pillText = o.payment_status==="PAID" ? "결제완료" : o.payment_status==="FAILED" ? "결제실패" : "결제대기";
   const items = o.items || [];
+  const needsOnsiteConfirm = o.payment_method === "ONSITE" && o.payment_status === "PENDING";
   return `
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <b>${esc(o.order_number)}</b>
         <span class="pill ${pillClass}">${pillText}</span>
       </div>
-      <div class="small" style="margin-top:4px">${new Date(o.created_at).toLocaleString("ko-KR")} · ${esc(PAY_META[o.payment_method]?.label || o.payment_method)}</div>
+      <div class="small" style="margin-top:4px">${new Date(o.created_at).toLocaleString("ko-KR")} · ${esc(paymentMethodLabel(o.payment_method))}</div>
       <div style="margin-top:8px">${esc(o.customer_name)} · ${esc(o.customer_phone)}</div>
       <div class="small">(${esc(o.postcode||"")}) ${esc(o.address)} ${esc(o.address_extra||"")} ${esc(o.address_detail||"")}</div>
       <div class="order-items">
@@ -523,6 +560,7 @@ function orderCard(o){
       <div style="display:flex;justify-content:space-between;font-weight:900;margin-top:6px">
         <span>총 결제금액</span><span>${won(o.total_amount)}</span>
       </div>
+      ${needsOnsiteConfirm ? `<button class="black-btn" style="width:100%;border:0;border-radius:9px;padding:11px;font-weight:800;margin-top:10px" onclick="confirmOnsitePayment('${o.id}', ${o.total_amount})">💳 현장결제 확인 (포스 결제 완료 처리)</button>` : ""}
       <div class="row2" style="margin-top:12px">
         <select class="field" onchange="updateFulfillment('${o.id}', this.value)">
           ${["주문접수","배송준비","배송중","배송완료"].map(s=>`<option value="${s}" ${o.fulfillment_status===s?"selected":""}>${s}</option>`).join("")}
@@ -540,6 +578,24 @@ async function updateFulfillment(orderId, status){
   await loadOrders();
 }
 
+async function confirmOnsitePayment(orderId, totalAmount){
+  if(!confirm(`포스기 결제를 완료하셨나요?\n\n결제 금액: ${won(totalAmount)}\n\n금액이 일치하면 확인을 눌러 결제완료로 처리하세요.`)) return;
+
+  const { data: items } = await sb.from("qrshop_order_items").select("product_id, quantity").eq("order_id", orderId);
+  for(const item of items ?? []){
+    if(!item.product_id) continue;
+    await sb.rpc("decrement_stock", { p_product_id: item.product_id, p_qty: item.quantity });
+  }
+
+  const { error } = await sb.from("qrshop_orders")
+    .update({ payment_status: "PAID", payment_id: "ONSITE-MANUAL", paid_at: new Date().toISOString() })
+    .eq("id", orderId);
+  if(error){ alert("처리 실패: " + error.message); return; }
+  toast("현장결제로 확인 처리했습니다.");
+  await loadProducts();
+  await loadOrders();
+}
+
 async function deleteOrderRow(orderId){
   if(!confirm("이 주문을 삭제할까요?")) return;
   const { error } = await sb.from("qrshop_orders").delete().eq("id", orderId);
@@ -549,9 +605,9 @@ async function deleteOrderRow(orderId){
 
 function exportOrdersCSV(){
   const rows = [["주문번호","주문일시","받는분","연락처","우편번호","주소","상세주소","상품금액","배송비","총금액","결제수단","결제상태","배송상태","상품내역"]];
-  ORDERS.forEach(o=>{
+  getFilteredOrders().forEach(o=>{
     const itemsStr = (o.items||[]).map(it=>`${it.product_name}${it.option_value?`(${it.option_value})`:""} x${it.quantity}`).join(" / ");
-    rows.push([o.order_number, new Date(o.created_at).toLocaleString("ko-KR"), o.customer_name, o.customer_phone, o.postcode, o.address, o.address_detail, o.product_total, o.shipping_fee, o.total_amount, PAY_META[o.payment_method]?.label||o.payment_method, o.payment_status, o.fulfillment_status, itemsStr]);
+    rows.push([o.order_number, new Date(o.created_at).toLocaleString("ko-KR"), o.customer_name, o.customer_phone, o.postcode, o.address, o.address_detail, o.product_total, o.shipping_fee, o.total_amount, paymentMethodLabel(o.payment_method), o.payment_status, o.fulfillment_status, itemsStr]);
   });
   const csv = rows.map(r=>r.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\n");
   const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});

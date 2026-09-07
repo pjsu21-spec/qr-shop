@@ -152,7 +152,7 @@ async function loadAll(){
   if(pErr) console.error("상품 조회 오류:", pErr);
   if(sErr) console.error("설정 조회 오류:", sErr);
   PRODUCTS = products || [];
-  SETTINGS = settingsRow || { shipping_base:0, shipping_free_threshold:0, payment_methods:{}, banner_message:"", legal_info:{} };
+  SETTINGS = settingsRow || { shipping_base:0, shipping_free_threshold:0, payment_methods:{}, banner_message:"", legal_info:{}, payment_mode:"ONLINE" };
   renderBanner();
   renderProducts();
   renderCart();
@@ -407,11 +407,16 @@ function openCheckout(){
           </span>
         </label>
 
-        <label class="form-label">결제 수단 *</label>
         ${
-          availableMethods.length
-          ? `<div class="pay-methods">${availableMethods.map(m => `<button class="pay-btn" style="background:${PAY_META[m].bg};color:${PAY_META[m].fg}" onclick="startPayment('${m}')">${PAY_META[m].label}</button>`).join("")}</div>`
-          : `<div class="test-note">아직 이용 가능한 결제 수단이 없습니다. 관리자에게 문의해주세요.</div>`
+          (SETTINGS && SETTINGS.payment_mode === "ONSITE")
+          ? `<div class="test-note">지금은 <b>현장결제</b> 운영 중입니다. 주문만 먼저 접수하시고, 결제는 부스 직원에게 안내받아 진행해주세요.</div>
+             <button class="checkout" style="margin-top:10px" onclick="submitOnsiteOrder()">주문 접수하기</button>`
+          : `<label class="form-label">결제 수단 *</label>
+             ${
+               availableMethods.length
+               ? `<div class="pay-methods">${availableMethods.map(m => `<button class="pay-btn" style="background:${PAY_META[m].bg};color:${PAY_META[m].fg}" onclick="startPayment('${m}')">${PAY_META[m].label}</button>`).join("")}</div>`
+               : `<div class="test-note">아직 이용 가능한 결제 수단이 없습니다. 관리자에게 문의해주세요.</div>`
+             }`
         }
         <div id="payStatus"></div>
       </div>
@@ -463,8 +468,7 @@ function makeOrderNumber(){
   return `DDM-${y}${m}${day}-${random}`;
 }
 
-async function startPayment(method){
-  if(isPaying) return;
+async function createPendingOrder(method){
   const name = document.getElementById("customerName").value.trim();
   const phone = document.getElementById("customerPhone").value.trim();
   const postcode = document.getElementById("postcode").value.trim();
@@ -472,10 +476,10 @@ async function startPayment(method){
   const addressExtra = document.getElementById("addressExtra").value.trim();
   const addressDetail = document.getElementById("addressDetail").value.trim();
 
-  if(!name){ alert("받는 분 이름을 입력해주세요."); return; }
-  if(!phone){ alert("휴대폰 번호를 입력해주세요."); return; }
-  if(!address){ alert("주소를 입력해주세요."); return; }
-  if(!document.getElementById("privacyConsent").checked){ alert("개인정보 수집·이용에 동의해주세요."); return; }
+  if(!name){ alert("받는 분 이름을 입력해주세요."); return null; }
+  if(!phone){ alert("휴대폰 번호를 입력해주세요."); return null; }
+  if(!address){ alert("주소를 입력해주세요."); return null; }
+  if(!document.getElementById("privacyConsent").checked){ alert("개인정보 수집·이용에 동의해주세요."); return null; }
 
   const items = Object.values(cart).map(line=>{
     const p = PRODUCTS.find(x=>x.id===line.id);
@@ -489,16 +493,13 @@ async function startPayment(method){
       subtotal: unitPrice*line.quantity
     };
   });
-  if(!items.length){ alert("장바구니가 비어 있습니다."); return; }
+  if(!items.length){ alert("장바구니가 비어 있습니다."); return null; }
 
   const productTotal = items.reduce((s,x)=>s+x.subtotal,0);
   const base = SETTINGS?.shipping_base ?? 0;
   const freeThreshold = SETTINGS?.shipping_free_threshold ?? 0;
   const shipping = productTotal>=freeThreshold ? 0 : base;
   const totalAmount = productTotal + shipping;
-
-  isPaying = true;
-  setPayStatus("주문을 생성하는 중...");
 
   const orderId = crypto.randomUUID();
   let orderNumber = makeOrderNumber();
@@ -524,9 +525,8 @@ async function startPayment(method){
   }
   if(insertError){
     console.error(insertError);
-    isPaying = false; setPayStatus("");
     alert("주문 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
-    return;
+    return null;
   }
 
   const itemRows = items.map(it => ({
@@ -543,10 +543,21 @@ async function startPayment(method){
   const { error: itemsError } = await sb.from("qrshop_order_items").insert(itemRows);
   if(itemsError){
     console.error(itemsError);
-    isPaying = false; setPayStatus("");
     alert("주문 상품 정보 저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
-    return;
+    return null;
   }
+
+  return { orderId, orderNumber, items, name, phone, productTotal, shipping, totalAmount };
+}
+
+async function startPayment(method){
+  if(isPaying) return;
+  isPaying = true;
+  setPayStatus("주문을 생성하는 중...");
+
+  const order = await createPendingOrder(method);
+  if(!order){ isPaying = false; setPayStatus(""); return; }
+  const { orderId, items, name, phone, totalAmount } = order;
 
   // 새로고침해도 결제 확인을 재시도할 수 있도록 orderId를 주소에 남겨둠
   history.replaceState({}, "", buildRedirectUrl(orderId));
@@ -582,6 +593,44 @@ async function startPayment(method){
     isPaying = false; setPayStatus("");
     alert("결제창을 여는 중 오류가 발생했습니다. 다시 시도해주세요.");
   }
+}
+
+async function submitOnsiteOrder(){
+  if(isPaying) return;
+  isPaying = true;
+  setPayStatus("주문을 접수하는 중...");
+
+  const order = await createPendingOrder("ONSITE");
+  isPaying = false;
+  if(!order){ setPayStatus(""); return; }
+
+  for(const key of Object.keys(cart)) delete cart[key];
+  showOnsiteComplete(order);
+  loadAll();
+}
+
+function showOnsiteComplete(order){
+  document.getElementById("modalRoot").innerHTML = `
+    <div class="modal">
+      <div class="sheet">
+        <div class="complete">
+          <div class="complete-icon">🧾</div>
+          <h2>주문이 접수되었습니다</h2>
+          <div class="order-no">${esc(order.orderNumber)}</div>
+          <div class="test-note" style="text-align:left">
+            아직 결제 전입니다. <b>이 화면을 부스 직원에게 보여주고 결제</b>를 진행해주세요.
+          </div>
+          <div class="complete-box">
+            <div class="summary-row"><span>받는 분</span><strong>${esc(order.name)}</strong></div>
+            <div class="summary-row"><span>상품금액</span><strong>${won(order.productTotal)}</strong></div>
+            <div class="summary-row"><span>배송비</span><strong>${order.shipping===0?"무료":won(order.shipping)}</strong></div>
+            <div class="summary-row total"><span>결제하실 금액</span><strong>${won(order.totalAmount)}</strong></div>
+          </div>
+          <button class="primary" onclick="location.href = location.pathname">확인</button>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 async function finalizePayment(orderId){
