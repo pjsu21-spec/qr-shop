@@ -622,11 +622,18 @@ async function deleteOrderRow(orderId){
   await loadOrders();
 }
 
+// 엑셀은 CSV를 열 때 숫자만 있는 셀을 자동으로 숫자로 바꿔서 앞자리 0을 지워버립니다.
+// (010-1234-5678, 우편번호 05000 등) 이 트릭(="값")은 엑셀이 "텍스트를 반환하는 수식"으로
+// 인식하게 만들어서 앞자리 0과 원래 값을 그대로 보존합니다.
+function csvTextForce(v){
+  return `="${String(v??"").replace(/"/g,'""')}"`;
+}
+
 function exportOrdersCSV(){
   const rows = [["주문번호","주문일시","받는분","연락처","우편번호","주소","상세주소","상품금액","배송비","총금액","결제수단","결제상태","배송상태","상품내역"]];
   getFilteredOrders().forEach(o=>{
     const itemsStr = (o.items||[]).map(it=>`${it.product_name}${it.option_value?`(${it.option_value})`:""} x${it.quantity}`).join(" / ");
-    rows.push([o.order_number, new Date(o.created_at).toLocaleString("ko-KR"), o.customer_name, o.customer_phone, o.postcode, o.address, o.address_detail, o.product_total, o.shipping_fee, o.total_amount, paymentMethodLabel(o.payment_method), o.payment_status, o.fulfillment_status, itemsStr]);
+    rows.push([o.order_number, new Date(o.created_at).toLocaleString("ko-KR"), o.customer_name, csvTextForce(o.customer_phone), csvTextForce(o.postcode), o.address, o.address_detail, o.product_total, o.shipping_fee, o.total_amount, paymentMethodLabel(o.payment_method), o.payment_status, o.fulfillment_status, itemsStr]);
   });
   downloadCSV(rows, `다름달음_QR주문_${new Date().toISOString().slice(0,10)}.csv`);
 }
@@ -645,8 +652,8 @@ function exportJMLogisticsCSV(){
     (o.items && o.items.length ? o.items : [null]).forEach(it=>{
       const productLabel = it ? `${it.product_name}${it.option_value?` ${it.option_value}`:""}` : "";
       rows.push([
-        "", "", shipperName, shipperPhone,
-        o.customer_name, o.customer_phone, o.customer_phone, o.postcode,
+        "", "", shipperName, csvTextForce(shipperPhone),
+        o.customer_name, csvTextForce(o.customer_phone), csvTextForce(o.customer_phone), csvTextForce(o.postcode),
         fullAddress, "", "", o.order_number,
         productLabel, it ? it.quantity : "", salesChannel
       ]);
