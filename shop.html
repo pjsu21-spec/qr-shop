@@ -459,6 +459,17 @@ function setPayStatus(msg){
   const el = document.getElementById("payStatus");
   if(el) el.innerHTML = msg ? `<div class="test-note">${esc(msg)}</div>` : "";
 }
+// 010-1234-5678 형태로 자동 정리 (엑셀에서 앞자리 0이 사라지는 문제도 예방)
+function formatPhoneNumber(raw){
+  const digits = String(raw||"").replace(/[^0-9]/g, "");
+  if(digits.length === 11) return digits.replace(/(\d{3})(\d{4})(\d{4})/, "$1-$2-$3");
+  if(digits.length === 10){
+    if(digits.startsWith("02")) return digits.replace(/(\d{2})(\d{4})(\d{4})/, "$1-$2-$3");
+    return digits.replace(/(\d{3})(\d{3})(\d{4})/, "$1-$2-$3");
+  }
+  return raw; // 형식이 애매하면(국제번호 등) 입력값을 그대로 둠
+}
+
 function makeOrderNumber(){
   const d = new Date();
   const y = d.getFullYear();
@@ -470,7 +481,7 @@ function makeOrderNumber(){
 
 async function createPendingOrder(method){
   const name = document.getElementById("customerName").value.trim();
-  const phone = document.getElementById("customerPhone").value.trim();
+  const phone = formatPhoneNumber(document.getElementById("customerPhone").value.trim());
   const postcode = document.getElementById("postcode").value.trim();
   const address = document.getElementById("address").value.trim();
   const addressExtra = document.getElementById("addressExtra").value.trim();

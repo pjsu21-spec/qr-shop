@@ -633,7 +633,7 @@ function exportOrdersCSV(){
   const rows = [["주문번호","주문일시","받는분","연락처","우편번호","주소","상세주소","상품금액","배송비","총금액","결제수단","결제상태","배송상태","상품내역"]];
   getFilteredOrders().forEach(o=>{
     const itemsStr = (o.items||[]).map(it=>`${it.product_name}${it.option_value?`(${it.option_value})`:""} x${it.quantity}`).join(" / ");
-    rows.push([o.order_number, new Date(o.created_at).toLocaleString("ko-KR"), o.customer_name, csvTextForce(o.customer_phone), csvTextForce(o.postcode), o.address, o.address_detail, o.product_total, o.shipping_fee, o.total_amount, paymentMethodLabel(o.payment_method), o.payment_status, o.fulfillment_status, itemsStr]);
+    rows.push([o.order_number, new Date(o.created_at).toLocaleString("ko-KR"), o.customer_name, o.customer_phone, csvTextForce(o.postcode), o.address, o.address_detail, o.product_total, o.shipping_fee, o.total_amount, paymentMethodLabel(o.payment_method), o.payment_status, o.fulfillment_status, itemsStr]);
   });
   downloadCSV(rows, `다름달음_QR주문_${new Date().toISOString().slice(0,10)}.csv`);
 }
@@ -652,8 +652,8 @@ function exportJMLogisticsCSV(){
     (o.items && o.items.length ? o.items : [null]).forEach(it=>{
       const productLabel = it ? `${it.product_name}${it.option_value?` ${it.option_value}`:""}` : "";
       rows.push([
-        "", "", shipperName, csvTextForce(shipperPhone),
-        o.customer_name, csvTextForce(o.customer_phone), csvTextForce(o.customer_phone), csvTextForce(o.postcode),
+        "", "", shipperName, shipperPhone,
+        o.customer_name, o.customer_phone, o.customer_phone, "",
         fullAddress, "", "", o.order_number,
         productLabel, it ? it.quantity : "", salesChannel
       ]);
