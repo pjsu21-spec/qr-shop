@@ -400,6 +400,9 @@ function openCheckout(){
         <label class="form-label">상세주소</label>
         <input id="addressDetail" class="input" placeholder="상세주소">
 
+        <label class="form-label">배송 요청사항 (선택)</label>
+        <input id="deliveryRequest" class="input" placeholder="예: 부재 시 경비실에 맡겨주세요">
+
         <label class="consent-row">
           <input type="checkbox" id="privacyConsent">
           <span>주문 처리를 위한 개인정보 수집·이용에 동의합니다. (필수)
@@ -486,6 +489,7 @@ async function createPendingOrder(method){
   const address = document.getElementById("address").value.trim();
   const addressExtra = document.getElementById("addressExtra").value.trim();
   const addressDetail = document.getElementById("addressDetail").value.trim();
+  const deliveryRequest = document.getElementById("deliveryRequest").value.trim();
 
   if(!name){ alert("받는 분 이름을 입력해주세요."); return null; }
   if(!phone){ alert("휴대폰 번호를 입력해주세요."); return null; }
@@ -523,6 +527,7 @@ async function createPendingOrder(method){
       customer_name: name,
       customer_phone: phone,
       postcode, address, address_extra: addressExtra, address_detail: addressDetail,
+      delivery_request: deliveryRequest,
       product_total: productTotal,
       shipping_fee: shipping,
       total_amount: totalAmount,
