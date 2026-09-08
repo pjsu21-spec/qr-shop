@@ -353,6 +353,7 @@ async function loadSettings(){
 function renderSettingsTab(){
   const s = SETTINGS || {};
   const pm = s.payment_methods || {};
+  const li = s.logistics_info || {};
   const mode = s.payment_mode || "ONLINE";
   const content = document.getElementById("tabContent");
   content.innerHTML = `
@@ -390,6 +391,17 @@ function renderSettingsTab(){
       </div>
     </div>
 
+    <div class="card">
+      <h3>3PL 발주서 설정</h3>
+      <p class="small">"주문 내역" 탭의 "3PL 발주서 CSV" 다운로드에 쓰이는 값입니다. 제이엠로지스 발주서 양식의 발신인 정보·판매처 항목에 그대로 들어갑니다.</p>
+      <div class="row2">
+        <div><label class="label">보내는분성명</label><input id="lg_shipper_name" class="field" value="${escAttr(li.shipper_name||"㈜다름달음")}"></div>
+        <div><label class="label">보내는분전화번호</label><input id="lg_shipper_phone" class="field" value="${escAttr(li.shipper_phone||"02-406-1122")}"></div>
+      </div>
+      <label class="label">판매처명 (3PL 발주서에 채널 구분용으로 표시됩니다)</label>
+      <input id="lg_sales_channel" class="field" value="${escAttr(li.sales_channel_name||"QR특가몰")}">
+    </div>
+
     <button class="black-btn" style="width:100%;border:0;border-radius:10px;padding:13px;font-weight:800" onclick="saveSettings()">설정 저장</button>
   `;
 }
@@ -402,6 +414,11 @@ async function saveSettings(){
       channel_key: document.getElementById(`pm_${m}_key`).value.trim()
     };
   });
+  const logistics_info = {
+    shipper_name: document.getElementById("lg_shipper_name").value.trim(),
+    shipper_phone: document.getElementById("lg_shipper_phone").value.trim(),
+    sales_channel_name: document.getElementById("lg_sales_channel").value.trim()
+  };
   const payload = {
     payment_mode: document.querySelector('input[name="pm_mode"]:checked')?.value || "ONLINE",
     shipping_base: Number(document.getElementById("st_base").value)||0,
@@ -409,6 +426,7 @@ async function saveSettings(){
     banner_message: document.getElementById("st_banner").value.trim(),
     portone_store_id: document.getElementById("st_store").value.trim(),
     payment_methods,
+    logistics_info,
     updated_at: new Date().toISOString()
   };
   const { error } = await sb.from("qrshop_settings").update(payload).eq("id",1);
@@ -521,6 +539,7 @@ function renderOrdersTab(){
       </select>
       <button onclick="loadOrders()">🔄 새로고침</button>
       <button onclick="exportOrdersCSV()">⬇ CSV 다운로드</button>
+      <button onclick="exportJMLogisticsCSV()">📦 3PL 발주서 CSV</button>
     </div>
     <div id="orderListBox"></div>
   `;
@@ -609,11 +628,40 @@ function exportOrdersCSV(){
     const itemsStr = (o.items||[]).map(it=>`${it.product_name}${it.option_value?`(${it.option_value})`:""} x${it.quantity}`).join(" / ");
     rows.push([o.order_number, new Date(o.created_at).toLocaleString("ko-KR"), o.customer_name, o.customer_phone, o.postcode, o.address, o.address_detail, o.product_total, o.shipping_fee, o.total_amount, paymentMethodLabel(o.payment_method), o.payment_status, o.fulfillment_status, itemsStr]);
   });
+  downloadCSV(rows, `다름달음_QR주문_${new Date().toISOString().slice(0,10)}.csv`);
+}
+
+// 제이엠로지스 발주서 양식(15개 컬럼)에 맞춘 내보내기. 주문 1건에 상품이 여러 개면 상품별로 한 줄씩 나갑니다.
+function exportJMLogisticsCSV(){
+  const li = (SETTINGS && SETTINGS.logistics_info) || {};
+  const shipperName = li.shipper_name || "㈜다름달음";
+  const shipperPhone = li.shipper_phone || "";
+  const salesChannel = li.sales_channel_name || "QR특가몰";
+
+  const rows = [["예약구분","집하예정일","보내는분성명","보내는분전화번호","받는사람","주문자 연락처","수취인 연락처","받는분우편번호","주소","배송메세지1","운송장번호","고객주문번호","상품명(약자)","수량","판매처"]];
+
+  getFilteredOrders().forEach(o=>{
+    const fullAddress = [o.address, o.address_extra, o.address_detail].filter(Boolean).join(" ");
+    (o.items && o.items.length ? o.items : [null]).forEach(it=>{
+      const productLabel = it ? `${it.product_name}${it.option_value?` ${it.option_value}`:""}` : "";
+      rows.push([
+        "", "", shipperName, shipperPhone,
+        o.customer_name, o.customer_phone, o.customer_phone, o.postcode,
+        fullAddress, "", "", o.order_number,
+        productLabel, it ? it.quantity : "", salesChannel
+      ]);
+    });
+  });
+
+  downloadCSV(rows, `제이엠로지스_발주서_QR특가몰_${new Date().toISOString().slice(0,10)}.csv`);
+}
+
+function downloadCSV(rows, filename){
   const csv = rows.map(r=>r.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\n");
   const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = `다름달음_QR주문_${new Date().toISOString().slice(0,10)}.csv`;
+  a.href = url; a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
 }
