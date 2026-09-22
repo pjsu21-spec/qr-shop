@@ -389,6 +389,9 @@ function openCheckout(){
         <label class="form-label">휴대폰 번호 *</label>
         <input id="customerPhone" class="input" placeholder="010-1234-5678" inputmode="tel">
 
+        <label class="form-label">이메일 *</label>
+        <input id="customerEmail" class="input" placeholder="example@email.com" inputmode="email">
+
         <label class="form-label">주소 *</label>
         <div class="address-row">
           <input id="postcode" class="input" placeholder="우편번호" readonly>
@@ -485,6 +488,7 @@ function makeOrderNumber(){
 async function createPendingOrder(method){
   const name = document.getElementById("customerName").value.trim();
   const phone = formatPhoneNumber(document.getElementById("customerPhone").value.trim());
+  const email = document.getElementById("customerEmail").value.trim();
   const postcode = document.getElementById("postcode").value.trim();
   const address = document.getElementById("address").value.trim();
   const addressExtra = document.getElementById("addressExtra").value.trim();
@@ -493,6 +497,7 @@ async function createPendingOrder(method){
 
   if(!name){ alert("받는 분 이름을 입력해주세요."); return null; }
   if(!phone){ alert("휴대폰 번호를 입력해주세요."); return null; }
+  if(!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ alert("올바른 이메일 주소를 입력해주세요."); return null; }
   if(!address){ alert("주소를 입력해주세요."); return null; }
   if(!document.getElementById("privacyConsent").checked){ alert("개인정보 수집·이용에 동의해주세요."); return null; }
 
@@ -526,6 +531,7 @@ async function createPendingOrder(method){
       order_number: orderNumber,
       customer_name: name,
       customer_phone: phone,
+      customer_email: email,
       postcode, address, address_extra: addressExtra, address_detail: addressDetail,
       delivery_request: deliveryRequest,
       product_total: productTotal,
@@ -563,7 +569,7 @@ async function createPendingOrder(method){
     return null;
   }
 
-  return { orderId, orderNumber, items, name, phone, productTotal, shipping, totalAmount };
+  return { orderId, orderNumber, items, name, phone, email, productTotal, shipping, totalAmount };
 }
 
 async function startPayment(method){
@@ -573,7 +579,7 @@ async function startPayment(method){
 
   const order = await createPendingOrder(method);
   if(!order){ isPaying = false; setPayStatus(""); return; }
-  const { orderId, items, name, phone, totalAmount } = order;
+  const { orderId, items, name, phone, email, totalAmount } = order;
 
   // 새로고침해도 결제 확인을 재시도할 수 있도록 orderId를 주소에 남겨둠
   history.replaceState({}, "", buildRedirectUrl(orderId));
@@ -592,7 +598,7 @@ async function startPayment(method){
       currency: "CURRENCY_KRW",
       payMethod: isCard ? "CARD" : "EASY_PAY",
       ...(isCard ? {} : { easyPay: { easyPayProvider: method } }),
-      customer: { fullName: name, phoneNumber: phone },
+      customer: { fullName: name, phoneNumber: phone, email },
       redirectUrl: buildRedirectUrl(orderId)
     });
 

@@ -550,7 +550,7 @@ function getFilteredOrders(){
   const q = orderSearch.trim().toLowerCase();
   return ORDERS
     .filter(o => orderFilter==="ALL" || o.payment_status===orderFilter)
-    .filter(o => !q || [o.order_number, o.customer_name, o.customer_phone].some(v => (v||"").toLowerCase().includes(q)));
+    .filter(o => !q || [o.order_number, o.customer_name, o.customer_phone, o.customer_email].some(v => (v||"").toLowerCase().includes(q)));
 }
 
 function renderOrderList(){
@@ -571,7 +571,7 @@ function orderCard(o){
         <span class="pill ${pillClass}">${pillText}</span>
       </div>
       <div class="small" style="margin-top:4px">${new Date(o.created_at).toLocaleString("ko-KR")} · ${esc(paymentMethodLabel(o.payment_method))}</div>
-      <div style="margin-top:8px">${esc(o.customer_name)} · ${esc(o.customer_phone)}</div>
+      <div style="margin-top:8px">${esc(o.customer_name)} · ${esc(o.customer_phone)}${o.customer_email?` · ${esc(o.customer_email)}`:""}</div>
       <div class="small">(${esc(o.postcode||"")}) ${esc(o.address)} ${esc(o.address_extra||"")} ${esc(o.address_detail||"")}</div>
       ${o.delivery_request ? `<div class="small" style="margin-top:4px;color:#a15c00">📦 요청사항: ${esc(o.delivery_request)}</div>` : ""}
       <div class="order-items">
@@ -631,10 +631,10 @@ function csvTextForce(v){
 }
 
 function exportOrdersCSV(){
-  const rows = [["주문번호","주문일시","받는분","연락처","우편번호","주소","상세주소","배송요청사항","상품금액","배송비","총금액","결제수단","결제상태","배송상태","상품내역"]];
+  const rows = [["주문번호","주문일시","받는분","연락처","이메일","우편번호","주소","상세주소","배송요청사항","상품금액","배송비","총금액","결제수단","결제상태","배송상태","상품내역"]];
   getFilteredOrders().forEach(o=>{
     const itemsStr = (o.items||[]).map(it=>`${it.product_name}${it.option_value?`(${it.option_value})`:""} x${it.quantity}`).join(" / ");
-    rows.push([o.order_number, new Date(o.created_at).toLocaleString("ko-KR"), o.customer_name, o.customer_phone, csvTextForce(o.postcode), o.address, o.address_detail, o.delivery_request||"", o.product_total, o.shipping_fee, o.total_amount, paymentMethodLabel(o.payment_method), o.payment_status, o.fulfillment_status, itemsStr]);
+    rows.push([o.order_number, new Date(o.created_at).toLocaleString("ko-KR"), o.customer_name, o.customer_phone, o.customer_email||"", csvTextForce(o.postcode), o.address, o.address_detail, o.delivery_request||"", o.product_total, o.shipping_fee, o.total_amount, paymentMethodLabel(o.payment_method), o.payment_status, o.fulfillment_status, itemsStr]);
   });
   downloadCSV(rows, `다름달음_QR주문_${new Date().toISOString().slice(0,10)}.csv`);
 }
