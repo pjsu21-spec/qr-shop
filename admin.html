@@ -525,25 +525,39 @@ async function loadOrders(){
 }
 
 let orderSearch = "";
+let orderViewMode = "list"; // list | daily
 
 function renderOrdersTab(){
   const content = document.getElementById("tabContent");
+  const isDaily = orderViewMode === "daily";
   content.innerHTML = `
-    <div class="orders-toolbar">
-      <input class="field" style="flex:1;min-width:160px" id="orderSearchInput" placeholder="이름·연락처·주문번호 검색" value="${escAttr(orderSearch)}" oninput="orderSearch=this.value; renderOrderList();">
-      <select onchange="orderFilter=this.value; renderOrderList()">
-        <option value="ALL" ${orderFilter==="ALL"?"selected":""}>전체 (${ORDERS.length})</option>
-        <option value="PAID" ${orderFilter==="PAID"?"selected":""}>결제완료 (${ORDERS.filter(o=>o.payment_status==="PAID").length})</option>
-        <option value="PENDING" ${orderFilter==="PENDING"?"selected":""}>결제대기 (${ORDERS.filter(o=>o.payment_status==="PENDING").length})</option>
-        <option value="FAILED" ${orderFilter==="FAILED"?"selected":""}>실패 (${ORDERS.filter(o=>o.payment_status==="FAILED").length})</option>
-      </select>
-      <button onclick="loadOrders()">🔄 새로고침</button>
-      <button onclick="exportOrdersCSV()">⬇ CSV 다운로드</button>
-      <button onclick="exportJMLogisticsCSV()">📦 3PL 발주서 CSV</button>
+    <div class="tabs" style="margin-bottom:10px">
+      <button class="tab ${!isDaily?"active":""}" onclick="orderViewMode='list'; renderOrdersTab();">목록 보기</button>
+      <button class="tab ${isDaily?"active":""}" onclick="orderViewMode='daily'; renderOrdersTab();">일자별 집계</button>
     </div>
+    ${isDaily ? `
+      <div class="orders-toolbar">
+        <button onclick="loadOrders()">🔄 새로고침</button>
+        <button onclick="exportDailySummaryCSV()">⬇ 일자별 집계 CSV</button>
+      </div>
+      <p class="small" style="margin:-4px 0 8px">결제완료된 주문만 집계합니다.</p>
+    ` : `
+      <div class="orders-toolbar">
+        <input class="field" style="flex:1;min-width:160px" id="orderSearchInput" placeholder="이름·연락처·주문번호 검색" value="${escAttr(orderSearch)}" oninput="orderSearch=this.value; renderOrderList();">
+        <select onchange="orderFilter=this.value; renderOrderList()">
+          <option value="ALL" ${orderFilter==="ALL"?"selected":""}>전체 (${ORDERS.length})</option>
+          <option value="PAID" ${orderFilter==="PAID"?"selected":""}>결제완료 (${ORDERS.filter(o=>o.payment_status==="PAID").length})</option>
+          <option value="PENDING" ${orderFilter==="PENDING"?"selected":""}>결제대기 (${ORDERS.filter(o=>o.payment_status==="PENDING").length})</option>
+          <option value="FAILED" ${orderFilter==="FAILED"?"selected":""}>실패 (${ORDERS.filter(o=>o.payment_status==="FAILED").length})</option>
+        </select>
+        <button onclick="loadOrders()">🔄 새로고침</button>
+        <button onclick="exportOrdersCSV()">⬇ CSV 다운로드</button>
+        <button onclick="exportJMLogisticsCSV()">📦 3PL 발주서 CSV</button>
+      </div>
+    `}
     <div id="orderListBox"></div>
   `;
-  renderOrderList();
+  if(isDaily) renderDailySummary(); else renderOrderList();
 }
 
 function getFilteredOrders(){
@@ -557,6 +571,56 @@ function renderOrderList(){
   const box = document.getElementById("orderListBox");
   const filtered = getFilteredOrders();
   box.innerHTML = filtered.length ? filtered.map(orderCard).join("") : '<p class="small">해당하는 주문이 없습니다.</p>';
+}
+
+// ------------------------------------------------------------
+// 일자별 집계 (결제완료 주문 기준)
+// ------------------------------------------------------------
+function dateKey(dateStr){
+  const d = new Date(dateStr);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+function buildDailySummary(){
+  const byDate = {};
+  ORDERS.filter(o => o.payment_status === "PAID").forEach(o => {
+    const key = dateKey(o.created_at);
+    if(!byDate[key]) byDate[key] = { date: key, orderCount: 0, revenue: 0, products: {} };
+    byDate[key].orderCount += 1;
+    byDate[key].revenue += o.total_amount;
+    (o.items||[]).forEach(it => {
+      const label = it.product_name + (it.option_value ? ` (${it.option_value})` : "");
+      byDate[key].products[label] = (byDate[key].products[label]||0) + it.quantity;
+    });
+  });
+  return Object.values(byDate).sort((a,b) => b.date.localeCompare(a.date));
+}
+
+function renderDailySummary(){
+  const box = document.getElementById("orderListBox");
+  const days = buildDailySummary();
+  if(!days.length){ box.innerHTML = '<p class="small">결제완료된 주문이 없습니다.</p>'; return; }
+  box.innerHTML = days.map(d => `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <b>${d.date}</b>
+        <span class="small">${d.orderCount}건 · ${won(d.revenue)}</span>
+      </div>
+      <div class="order-items" style="margin-top:10px">
+        ${Object.entries(d.products).map(([name,qty]) => `<div class="order-item-line"><span>${esc(name)}</span><span>${qty}개</span></div>`).join("")}
+      </div>
+    </div>
+  `).join("");
+}
+
+function exportDailySummaryCSV(){
+  const days = buildDailySummary();
+  const allProductNames = [...new Set(days.flatMap(d => Object.keys(d.products)))];
+  const rows = [["날짜","결제완료 건수","매출", ...allProductNames]];
+  days.forEach(d => {
+    rows.push([d.date, d.orderCount, d.revenue, ...allProductNames.map(name => d.products[name] || 0)]);
+  });
+  downloadCSV(rows, `다름달음_QR몰_일자별집계_${new Date().toISOString().slice(0,10)}.csv`);
 }
 
 function orderCard(o){
