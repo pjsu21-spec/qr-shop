@@ -592,7 +592,7 @@ async function startPayment(method){
     const response = await PortOne.requestPayment({
       storeId: SETTINGS.portone_store_id,
       channelKey: methodConf.channel_key,
-      paymentId: `qrshop-${orderId}`,
+      paymentId: `qr${orderId.replace(/-/g, "")}`, // INICIS는 주문번호(oid) 최대 40자 제한이 있어 짧게 생성
       orderName: buildOrderName(items),
       totalAmount,
       currency: "CURRENCY_KRW",
