@@ -371,7 +371,13 @@ document.getElementById("checkout").addEventListener("click", openCheckout);
 // ============================================================
 // 주문/결제
 // ============================================================
+// 주소 뒤에 ?mode=onsite 가 붙으면, admin.html 설정과 무관하게 이 링크는
+// 항상 결제 없이 주문만 접수하는 모드로 동작합니다. (외부 행사 등에서
+// 기존 온라인결제 링크는 그대로 두고, 별도 QR/링크로만 예외 적용할 때 사용)
+const FORCE_ONSITE = new URLSearchParams(location.search).get("mode") === "onsite";
+
 function openCheckout(){
+  const isOnsite = FORCE_ONSITE || (SETTINGS && SETTINGS.payment_mode === "ONSITE");
   const methods = (SETTINGS && SETTINGS.payment_methods) || {};
   const availableMethods = Object.keys(PAY_META).filter(k => methods[k]?.enabled && methods[k]?.channel_key);
 
@@ -414,7 +420,7 @@ function openCheckout(){
         </label>
 
         ${
-          (SETTINGS && SETTINGS.payment_mode === "ONSITE")
+          isOnsite
           ? `<div class="test-note">지금은 <b>현장결제</b> 운영 중입니다. 주문만 먼저 접수하시고, 결제는 부스 직원에게 안내받아 진행해주세요.</div>
              <button class="checkout" style="margin-top:10px" onclick="submitOnsiteOrder()">주문 접수하기</button>`
           : `<label class="form-label">결제 수단 *</label>
