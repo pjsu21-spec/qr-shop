@@ -30,6 +30,12 @@ button,input,select,textarea{font:inherit}
 .option-row{display:grid;grid-template-columns:1fr 1fr 90px 34px;gap:6px;margin-top:7px}
 .option-row input{min-width:0;padding:9px;border:1px solid #ddd;border-radius:8px}
 .option-row button{border:0;border-radius:8px;background:#ffe7e7}
+.tier-row{display:grid;grid-template-columns:1fr 1fr 34px;gap:6px;margin-top:7px}
+.tier-row input{min-width:0;padding:9px;border:1px solid #ddd;border-radius:8px}
+.tier-row button{border:0;border-radius:8px;background:#ffe7e7}
+.bgroup{border:1px solid #e5e5e5;border-radius:12px;padding:12px;margin-top:12px;background:#fafafa}
+.bgroup-head{display:flex;gap:6px}
+.bgroup-head .red-btn{border:0;border-radius:9px;padding:0 14px;font-weight:800}
 .small{font-size:12px;color:#888}
 .pill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:800}
 .pill-paid{background:#e6f7ec;color:#0a7a3d}
@@ -187,6 +193,7 @@ function renderProductsTab(){
           <div>
             <b>${esc(p.name)}</b> ${p.is_active ? "" : '<span class="pill pill-pending">숨김</span>'}
             <div class="small" style="margin-top:4px">판매가 ${won(p.price_sale)} · 재고 ${p.stock} · 정렬 ${p.display_order}</div>
+            <div class="small" style="margin-top:2px">${p.bundle_group_id ? `🎁 묶음: ${esc(bundleGroupName(p.bundle_group_id))}` : "묶음 할인 없음"}</div>
           </div>
           ${p.image_url ? `<img class="admin-image" src="${esc(p.image_url)}">` : ""}
           <div class="actions">
@@ -204,9 +211,11 @@ function editProductForm(id){
   const p = id ? PRODUCTS.find(x=>x.id===id) : {
     id: null, name: "", description: "", price_normal: 0, price_sale: 0, stock: 0,
     display_order: PRODUCTS.length ? Math.max(...PRODUCTS.map(x=>x.display_order)) + 1 : 0,
-    is_active: true, image_url: "", image_back_url: "", emoji: "📦", options: []
+    is_active: true, image_url: "", image_back_url: "", emoji: "📦", options: [],
+    bundle_group_id: (currentBundleGroups().find(g => g.enabled !== false) || {}).id || ""
   };
   const isNew = !id;
+  const bundleGroups = currentBundleGroups();
   const content = document.getElementById("tabContent");
   content.innerHTML = `
     <div class="card">
@@ -215,12 +224,19 @@ function editProductForm(id){
       <label class="label">상품 설명</label><input id="p_desc" class="field" value="${escAttr(p.description||"")}">
       <div class="row2">
         <div><label class="label">정상가</label><input id="p_normal" type="number" class="field" value="${p.price_normal}"></div>
-        <div><label class="label">판매가 *</label><input id="p_sale" type="number" class="field" value="${p.price_sale}"></div>
+        <div><label class="label">판매가 *</label><input id="p_sale" type="number" class="field" value="${p.price_sale}" oninput="updateBundleHint()"></div>
       </div>
       <div class="row2">
         <div><label class="label">재고</label><input id="p_stock" type="number" class="field" value="${p.stock}"></div>
         <div><label class="label">정렬순서(작을수록 먼저)</label><input id="p_order" type="number" class="field" value="${p.display_order}"></div>
       </div>
+      <label class="label">묶음 할인 그룹</label>
+      <select id="p_bundle" class="field" onchange="updateBundleHint()">
+        <option value="">적용 안 함</option>
+        ${bundleGroups.map(g => `<option value="${escAttr(g.id)}" ${g.id===p.bundle_group_id?"selected":""}>${esc(g.name)}${g.enabled===false?" (사용 중지)":""}</option>`).join("")}
+      </select>
+      <div id="p_bundle_hint" class="small" style="margin-top:6px;line-height:1.5"></div>
+
       <label class="label"><input type="checkbox" id="p_active" ${p.is_active?"checked":""}> 고객화면에 노출</label>
 
       <label class="label">대표이미지 업로드</label>
@@ -249,6 +265,21 @@ function editProductForm(id){
     </div>
   `;
   renderOptions(p.options || []);
+  updateBundleHint();
+}
+
+// 묶음 그룹 선택 안내 + 판매가가 그룹의 1팩 가격과 다를 때 경고
+function updateBundleHint(){
+  const sel = document.getElementById("p_bundle");
+  const hint = document.getElementById("p_bundle_hint");
+  if(!sel || !hint) return;
+  const g = currentBundleGroups().find(x => x.id === sel.value);
+  if(!g){ hint.textContent = "묶음 할인 없이 판매가 그대로 판매됩니다."; return; }
+  const tierText = [...(g.tiers||[])].sort((a, b) => a.qty - b.qty).map(t => `${t.qty}팩 ${won(t.price)}`).join(" · ");
+  const price = Number(document.getElementById("p_sale").value) || 0;
+  const mismatch = price !== Number(g.single_price);
+  hint.innerHTML = `1팩 ${won(g.single_price)} · ${esc(tierText)}<br>같은 그룹 상품끼리 섞어서 팩 수를 합산합니다.`
+    + (mismatch ? `<br><b style="color:#c0392b">⚠️ 이 상품의 판매가(${won(price)})가 그룹의 1팩 가격(${won(g.single_price)})과 달라요. 의도한 게 아니라면 맞춰주세요.</b>` : "");
 }
 
 function renderOptions(list){
@@ -313,6 +344,7 @@ async function saveProduct(id, isNew){
     stock: Number(document.getElementById("p_stock").value)||0,
     display_order: Number(document.getElementById("p_order").value)||0,
     is_active: document.getElementById("p_active").checked,
+    bundle_group_id: document.getElementById("p_bundle").value,
     image_url: document.getElementById("p_image_url").value.trim(),
     image_back_url: document.getElementById("p_image_back_url").value.trim(),
     emoji: document.getElementById("p_emoji").value.trim() || "📦",
@@ -325,7 +357,7 @@ async function saveProduct(id, isNew){
   const { error } = isNew
     ? await sb.from("qrshop_products").insert(payload)
     : await sb.from("qrshop_products").update(payload).eq("id", id);
-  if(error){ alert("저장 실패: " + error.message); return; }
+  if(error){ alert("저장 실패: " + dbErrorMessage(error)); return; }
   toast("저장했습니다.");
   await loadProducts();
   renderProductsTab();
@@ -350,10 +382,76 @@ async function loadSettings(){
   SETTINGS = data;
 }
 
+function tierRow(t = {qty:"", price:""}){
+  return `<div class="tier-row" data-tier>
+    <input class="tq" type="number" min="2" placeholder="팩 수" value="${t.qty}">
+    <input class="tp" type="number" min="0" placeholder="묶음 가격" value="${t.price}">
+    <button onclick="this.parentElement.remove()">×</button>
+  </div>`;
+}
+
+// ------------------------------------------------------------
+// 묶음 그룹 (묶음 할인): 그룹은 설정에서 만들고, 상품 등록 화면에서 상품마다 선택합니다.
+// ------------------------------------------------------------
+function currentBundleGroups(){
+  const s = SETTINGS || {};
+  if(Array.isArray(s.bundle_groups)) return s.bundle_groups;
+  // migration_11 실행 전(구버전 설정)에는 기존 전체 적용 설정을 그룹 1개처럼 보여줍니다.
+  if(s.bundle_pricing) return [{ id: "default", name: "기본 묶음", enabled: s.bundle_pricing.enabled, single_price: s.bundle_pricing.single_price, tiers: s.bundle_pricing.tiers }];
+  return [];
+}
+function bundleGroupName(id){
+  if(!id) return "";
+  const g = currentBundleGroups().find(x => x.id === id);
+  return g ? g.name : "삭제된 그룹";
+}
+function newBundleGroupId(){ return "g" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+
+function bundleGroupCard(g){
+  const used = PRODUCTS.filter(p => p.bundle_group_id === g.id).length;
+  return `<div class="bgroup" data-gid="${escAttr(g.id)}">
+    <div class="bgroup-head">
+      <input class="field bg-name" placeholder="그룹 이름 (예: 500g 6천원)" value="${escAttr(g.name||"")}">
+      <button class="red-btn" onclick="removeBundleGroup(this)">삭제</button>
+    </div>
+    <label class="label"><input type="checkbox" class="bg-enabled" ${g.enabled!==false?"checked":""}> 이 그룹 묶음 할인 사용</label>
+    <label class="label">1팩(낱개) 가격</label>
+    <input class="field bg-single" type="number" value="${g.single_price??6000}">
+    <label class="label">묶음 가격 (팩 수 / 묶음 총액)</label>
+    <div class="bg-tiers">${(g.tiers||[]).map(t => tierRow(t)).join("")}</div>
+    <button class="gray-btn" style="width:100%;border:0;border-radius:9px;padding:10px;font-weight:800;margin-top:8px" onclick="addTierRow(this)">＋ 묶음 추가</button>
+    <div class="small" style="margin-top:8px">이 그룹을 쓰는 상품: ${used}개 (상품 등록/수정 화면에서 선택)</div>
+  </div>`;
+}
+function addTierRow(btn){ btn.closest(".bgroup").querySelector(".bg-tiers").insertAdjacentHTML("beforeend", tierRow()); }
+function addBundleGroup(){
+  document.getElementById("bg_list").insertAdjacentHTML("beforeend", bundleGroupCard({
+    id: newBundleGroupId(), name: "", enabled: true, single_price: 6000,
+    tiers: [{qty:2,price:10000},{qty:4,price:20000},{qty:6,price:30000}]
+  }));
+}
+function removeBundleGroup(btn){
+  const el = btn.closest(".bgroup");
+  const used = PRODUCTS.filter(p => p.bundle_group_id === el.dataset.gid).length;
+  const name = el.querySelector(".bg-name").value.trim() || "이 그룹";
+  if(!confirm(`"${name}"을(를) 삭제할까요?` + (used ? `\n\n이 그룹을 쓰는 상품 ${used}개는 묶음 할인이 적용되지 않게 됩니다.` : "") + `\n\n(맨 아래 "설정 저장"을 눌러야 최종 반영됩니다)`)) return;
+  el.remove();
+}
+
+// DB 업데이트(migration_11) 전에 새 기능을 쓰려 할 때 원인을 바로 알려주기 위한 안내
+function dbErrorMessage(error){
+  const m = error?.message || "";
+  if(m.includes("bundle_groups") || m.includes("bundle_group_id") || m.includes("discount_amount")){
+    return "DB가 아직 업데이트되지 않았습니다. Supabase SQL Editor에서 migration_11_bundle_groups.sql을 먼저 실행해주세요.\n\n(" + m + ")";
+  }
+  return m;
+}
+
 function renderSettingsTab(){
   const s = SETTINGS || {};
   const pm = s.payment_methods || {};
   const li = s.logistics_info || {};
+  const bundleGroups = currentBundleGroups();
   const mode = s.payment_mode || "ONLINE";
   const content = document.getElementById("tabContent");
   content.innerHTML = `
@@ -372,6 +470,13 @@ function renderSettingsTab(){
       </div>
       <label class="label">안내 배너 문구 (비워두면 고객화면에 표시 안 함)</label>
       <input id="st_banner" class="field" value="${escAttr(s.banner_message||"")}" placeholder="예: 행사장 한정 특가, 재고 소진 시 조기 종료">
+    </div>
+
+    <div class="card">
+      <h3>묶음 그룹 (묶음 할인)</h3>
+      <p class="small">묶음 할인을 적용할 상품군을 그룹으로 만들어두고, <b>상품 등록/수정 화면에서 상품마다 그룹을 선택</b>하세요. 같은 그룹 상품끼리는 품목을 섞어도 팩 수를 합산해서 묶음가로 계산합니다(예: 망고 1 + 자몽 1 = 2팩). 홀수·초과 수량은 가장 저렴한 조합으로 자동 계산되고(3팩 = 2팩 묶음 + 낱개 1팩), 그룹마다 가격 조건을 다르게 둘 수 있어요. 그룹에 넣은 상품의 판매가는 그룹의 1팩 가격과 같게 맞춰주세요. 무료배송 기준은 할인 후 금액으로 판단합니다.</p>
+      <div id="bg_list">${bundleGroups.map(g => bundleGroupCard(g)).join("")}</div>
+      <button class="gray-btn" style="width:100%;border:0;border-radius:9px;padding:10px;font-weight:800;margin-top:12px" onclick="addBundleGroup()">＋ 묶음 그룹 추가</button>
     </div>
 
     <div class="card">
@@ -419,6 +524,20 @@ async function saveSettings(){
     shipper_phone: document.getElementById("lg_shipper_phone").value.trim(),
     sales_channel_name: document.getElementById("lg_sales_channel").value.trim()
   };
+  const bundle_groups = [...document.querySelectorAll(".bgroup")].map((el, i) => ({
+    id: el.dataset.gid,
+    name: el.querySelector(".bg-name").value.trim() || `묶음 그룹 ${i + 1}`,
+    enabled: el.querySelector(".bg-enabled").checked,
+    single_price: Number(el.querySelector(".bg-single").value) || 0,
+    tiers: [...el.querySelectorAll("[data-tier]")]
+      .map(r => ({ qty: Number(r.querySelector(".tq").value)||0, price: Number(r.querySelector(".tp").value)||0 }))
+      .filter(t => t.qty >= 2)
+  }));
+  const badGroup = bundle_groups.find(g => g.enabled && (g.single_price <= 0 || !g.tiers.length));
+  if(badGroup){
+    alert(`"${badGroup.name}" 그룹: 사용하려면 1팩 가격과, 2팩 이상의 묶음 가격을 하나 이상 입력해주세요. (쓰지 않을 그룹은 "사용" 체크를 끄거나 삭제하세요)`);
+    return;
+  }
   const payload = {
     payment_mode: document.querySelector('input[name="pm_mode"]:checked')?.value || "ONLINE",
     shipping_base: Number(document.getElementById("st_base").value)||0,
@@ -427,10 +546,11 @@ async function saveSettings(){
     portone_store_id: document.getElementById("st_store").value.trim(),
     payment_methods,
     logistics_info,
+    bundle_groups,
     updated_at: new Date().toISOString()
   };
   const { error } = await sb.from("qrshop_settings").update(payload).eq("id",1);
-  if(error){ alert("저장 실패: " + error.message); return; }
+  if(error){ alert("저장 실패: " + dbErrorMessage(error)); return; }
   toast("설정을 저장했습니다.");
   await loadSettings();
 }
@@ -641,6 +761,7 @@ function orderCard(o){
       <div class="order-items">
         ${items.map(it => `<div class="order-item-line"><span>${esc(it.product_name)}${it.option_value?` (${esc(it.option_value)})`:""} × ${it.quantity}</span><span>${won(it.subtotal)}</span></div>`).join("")}
       </div>
+      ${o.discount_amount>0 ? `<div style="display:flex;justify-content:space-between;color:#c0392b;font-size:13px;margin-top:4px"><span>묶음 할인</span><span>−${won(o.discount_amount)}</span></div>` : ""}
       <div style="display:flex;justify-content:space-between;font-weight:900;margin-top:6px">
         <span>총 결제금액</span><span>${won(o.total_amount)}</span>
       </div>
@@ -695,10 +816,10 @@ function csvTextForce(v){
 }
 
 function exportOrdersCSV(){
-  const rows = [["주문번호","주문일시","받는분","연락처","이메일","우편번호","주소","상세주소","배송요청사항","상품금액","배송비","총금액","결제수단","결제상태","배송상태","상품내역"]];
+  const rows = [["주문번호","주문일시","받는분","연락처","이메일","우편번호","주소","상세주소","배송요청사항","상품금액","묶음할인","배송비","총금액","결제수단","결제상태","배송상태","상품내역"]];
   getFilteredOrders().forEach(o=>{
     const itemsStr = (o.items||[]).map(it=>`${it.product_name}${it.option_value?`(${it.option_value})`:""} x${it.quantity}`).join(" / ");
-    rows.push([o.order_number, new Date(o.created_at).toLocaleString("ko-KR"), o.customer_name, o.customer_phone, o.customer_email||"", csvTextForce(o.postcode), o.address, o.address_detail, o.delivery_request||"", o.product_total, o.shipping_fee, o.total_amount, paymentMethodLabel(o.payment_method), o.payment_status, o.fulfillment_status, itemsStr]);
+    rows.push([o.order_number, new Date(o.created_at).toLocaleString("ko-KR"), o.customer_name, o.customer_phone, o.customer_email||"", csvTextForce(o.postcode), o.address, o.address_detail, o.delivery_request||"", o.product_total, o.discount_amount||0, o.shipping_fee, o.total_amount, paymentMethodLabel(o.payment_method), o.payment_status, o.fulfillment_status, itemsStr]);
   });
   downloadCSV(rows, `다름달음_QR주문_${new Date().toISOString().slice(0,10)}.csv`);
 }

@@ -13,6 +13,8 @@ button,input{font:inherit}
 .logo{font-size:24px;font-weight:900;letter-spacing:-1px}
 .header h1{margin:12px 0 5px;font-size:25px;letter-spacing:-1px}
 .header p{margin:0;color:#777;font-size:14px}
+.bundle-tag{margin-left:auto;padding:3px 8px;border-radius:999px;background:#eaf7ee;color:#1d6b3a;font-size:11px;font-weight:800}
+.bundle-note{display:none;margin:0 16px 4px;padding:11px 14px;border-radius:12px;background:#eaf7ee;color:#1d6b3a;font-size:13px;font-weight:800;line-height:1.5}
 .banner{margin:16px;padding:13px 15px;border-radius:12px;background:#fff7d6;color:#725d00;font-size:13px;line-height:1.5}
 .products{padding:0 16px}
 .loading-msg{padding:60px 0;text-align:center;color:#999;font-size:14px}
@@ -86,6 +88,7 @@ button,input{font:inherit}
   </header>
 
   <div class="banner" id="banner" style="display:none"></div>
+  <div class="bundle-note" id="bundleNote"></div>
 
   <section class="products" id="products"><div class="loading-msg">상품을 불러오는 중...</div></section>
 
@@ -94,6 +97,7 @@ button,input{font:inherit}
     <div id="cartItems" class="empty">상품을 담아주세요.</div>
     <div class="summary">
       <div class="summary-row"><span>상품금액</span><strong id="productTotal">0원</strong></div>
+      <div class="summary-row" id="discountRow" style="display:none;color:#c0392b"><span>묶음 할인</span><strong id="discountAmt">−0원</strong></div>
       <div class="summary-row"><span>배송비</span><strong id="shipping">0원</strong></div>
       <div class="summary-row total"><span>총 결제금액</span><strong id="grandTotal">0원</strong></div>
     </div>
@@ -154,6 +158,7 @@ async function loadAll(){
   PRODUCTS = products || [];
   SETTINGS = settingsRow || { shipping_base:0, shipping_free_threshold:0, payment_methods:{}, banner_message:"", legal_info:{}, payment_mode:"ONLINE" };
   renderBanner();
+  renderBundleNote();
   renderProducts();
   renderCart();
   renderLegal();
@@ -268,6 +273,7 @@ function renderProducts(){
       <div class="price">
         ${p.price_normal > p.price_sale ? `<span class="normal">${won(p.price_normal)}</span>` : ""}
         <span class="sale">${won(p.price_sale)}</span>
+        ${getBundleGroups()[groupIdOf(p)] ? `<span class="bundle-tag">🎁 묶음할인</span>` : ""}
       </div>
       <div class="stock">${p.stock>0 ? `재고 ${p.stock}개` : `<b style="color:#c00">일시 품절</b>`}</div>
       <div class="action-row">
@@ -321,10 +327,98 @@ function changeQty(id, delta){
   if(delta>0) toast(p.name + (option?` · ${option.value}`:"") + "을(를) 담았습니다.");
 }
 
+// ============================================================
+// 묶음 할인 (admin.html "결제·배송 설정" > 묶음 그룹에서 관리)
+// - 상품 등록 화면에서 상품마다 "묶음 그룹"을 선택합니다.
+// - 같은 그룹 상품끼리는 품목을 섞어도 팩 수를 합산해서 그룹의 묶음가로 계산합니다.
+//   예) 그룹: 1팩 6,000 / 2팩 10,000 / 4팩 20,000 / 6팩 30,000 → 망고 1 + 자몽 1 = 2팩 = 10,000원
+// - 홀수·초과 수량은 묶음을 조합해 가장 저렴한 금액으로 자동 계산됩니다. (3팩 = 2팩 묶음 + 낱개 1팩)
+// - 그룹이 없는 상품은 할인 대상이 아닙니다.
+// ============================================================
+const LEGACY_GROUP = "__legacy__";
+
+// 사용 중인 묶음 그룹 { id: { id, name, single, tiers } }
+function getBundleGroups(){
+  let groups = SETTINGS && SETTINGS.bundle_groups;
+  if(!Array.isArray(groups)){
+    // 그룹 기능 DB 업데이트(migration_11) 전에는 기존 "전체 상품 적용" 설정을 그대로 사용 (할인이 조용히 꺼지지 않도록)
+    const bp = SETTINGS && SETTINGS.bundle_pricing;
+    groups = bp ? [{ id: LEGACY_GROUP, name: "묶음 할인", enabled: bp.enabled, single_price: bp.single_price, tiers: bp.tiers }] : [];
+  }
+  const map = {};
+  groups.forEach(g => {
+    if(!g || g.enabled === false) return;
+    const single = Number(g.single_price) || 0;
+    const tiers = (g.tiers || [])
+      .map(t => ({ qty: Number(t.qty), price: Number(t.price) }))
+      .filter(t => t.qty >= 2 && t.price >= 0);
+    if(!g.id || !single || !tiers.length) return;
+    map[g.id] = { id: g.id, name: g.name || "묶음 할인", single, tiers };
+  });
+  return map;
+}
+
+// 상품이 속한 묶음 그룹 id (없으면 "")
+function groupIdOf(product){
+  const hasGroups = SETTINGS && Array.isArray(SETTINGS.bundle_groups);
+  return hasGroups ? (product.bundle_group_id || "") : LEGACY_GROUP;
+}
+
+// n팩을 살 때 낱개/묶음 조합 중 가장 저렴한 금액
+function bundleCost(n, g){
+  const dp = new Array(n + 1).fill(0);
+  for(let i = 1; i <= n; i++){
+    dp[i] = dp[i - 1] + g.single;
+    for(const t of g.tiers){
+      if(i >= t.qty) dp[i] = Math.min(dp[i], dp[i - t.qty] + t.price);
+    }
+  }
+  return dp[n];
+}
+
+// lines: [{ base: 판매가, extra: 옵션 추가금, qty: 수량, group: 묶음 그룹 id }]
+// 화면(renderCart)과 주문 저장(createPendingOrder)이 반드시 같은 계산을 쓰도록 한 곳에서만 계산합니다.
+function computeTotals(lines){
+  const listSubtotal = lines.reduce((s, l) => s + (l.base + l.extra) * l.qty, 0);
+  const packCount = lines.reduce((s, l) => s + l.qty, 0);
+
+  // 그룹별로 팩 수/정가 합계를 모아서, 그룹마다 묶음가로 다시 계산
+  const groups = getBundleGroups();
+  const acc = {};
+  lines.forEach(l => {
+    if(!l.group || !groups[l.group]) return;
+    if(!acc[l.group]) acc[l.group] = { qty: 0, baseSum: 0 };
+    acc[l.group].qty += l.qty;
+    acc[l.group].baseSum += l.base * l.qty;
+  });
+  let discount = 0;
+  Object.keys(acc).forEach(id => {
+    discount += Math.max(0, acc[id].baseSum - bundleCost(acc[id].qty, groups[id])); // 정가보다 비싸지는 일은 없음
+  });
+
+  const productTotal = listSubtotal - discount; // 할인 적용 후 상품금액 (무료배송 기준도 이 금액으로 판단)
+  const shippingBase = SETTINGS?.shipping_base ?? 0;
+  const freeThreshold = SETTINGS?.shipping_free_threshold ?? 0;
+  const shipping = packCount === 0 ? 0 : (productTotal >= freeThreshold ? 0 : shippingBase);
+  return { packCount, listSubtotal, discount, productTotal, shipping, total: productTotal + shipping };
+}
+
+// 상단 안내: 그룹마다 한 줄
+function renderBundleNote(){
+  const el = document.getElementById("bundleNote");
+  const groups = Object.values(getBundleGroups());
+  if(!groups.length){ el.style.display = "none"; return; }
+  el.innerHTML = groups.map(g => {
+    const tierText = [...g.tiers].sort((a, c) => a.qty - c.qty).map(t => `${t.qty}팩 ${won(t.price)}`).join(" · ");
+    return `<div>🎁 ${esc(g.name)} · ${esc(tierText)} <span style="font-weight:600">(1팩 ${won(g.single)})</span></div>`;
+  }).join("");
+  el.style.display = "block";
+}
+
 function renderCart(){
   const entries = Object.entries(cart);
   const box = document.getElementById("cartItems");
-  let productTotal = 0;
+  const lines = [];
 
   if(!entries.length){
     box.className = "empty"; box.innerHTML = "상품을 담아주세요.";
@@ -333,9 +427,10 @@ function renderCart(){
     box.innerHTML = entries.map(([key,line])=>{
       const p = PRODUCTS.find(x=>x.id===line.id);
       if(!p) return "";
-      const unit = p.price_sale + (line.option?.additionalPrice||0);
+      const extra = line.option?.additionalPrice||0;
+      const unit = p.price_sale + extra;
       const sub = unit*line.quantity;
-      productTotal += sub;
+      lines.push({ base: p.price_sale, extra, qty: line.quantity, group: groupIdOf(p) });
       return `<div class="cart-line">
         <div class="cart-name">
           ${esc(p.name)}
@@ -350,13 +445,12 @@ function renderCart(){
     }).join("");
   }
 
-  const base = SETTINGS?.shipping_base ?? 0;
-  const freeThreshold = SETTINGS?.shipping_free_threshold ?? 0;
-  const shipping = productTotal===0 ? 0 : (productTotal>=freeThreshold ? 0 : base);
-  const total = productTotal + shipping;
-  document.getElementById("productTotal").textContent = won(productTotal);
-  document.getElementById("shipping").textContent = (shipping===0 && productTotal>0) ? "무료" : won(shipping);
-  document.getElementById("grandTotal").textContent = won(total);
+  const t = computeTotals(lines);
+  document.getElementById("productTotal").textContent = won(t.listSubtotal);
+  document.getElementById("discountRow").style.display = t.discount > 0 ? "flex" : "none";
+  document.getElementById("discountAmt").textContent = "−" + won(t.discount);
+  document.getElementById("shipping").textContent = (t.shipping===0 && t.listSubtotal>0) ? "무료" : won(t.shipping);
+  document.getElementById("grandTotal").textContent = won(t.total);
   document.getElementById("checkout").disabled = !entries.length;
 }
 
@@ -509,11 +603,15 @@ async function createPendingOrder(method){
 
   const items = Object.values(cart).map(line=>{
     const p = PRODUCTS.find(x=>x.id===line.id);
-    const unitPrice = p.price_sale + (line.option?.additionalPrice||0);
+    const extraPrice = line.option?.additionalPrice||0;
+    const unitPrice = p.price_sale + extraPrice;
     return {
       product_id: p.id,
       name: p.name,
       option: line.option ? {...line.option} : null,
+      basePrice: p.price_sale,
+      extraPrice,
+      group: groupIdOf(p),
       unitPrice,
       quantity: line.quantity,
       subtotal: unitPrice*line.quantity
@@ -521,11 +619,12 @@ async function createPendingOrder(method){
   });
   if(!items.length){ alert("장바구니가 비어 있습니다."); return null; }
 
-  const productTotal = items.reduce((s,x)=>s+x.subtotal,0);
-  const base = SETTINGS?.shipping_base ?? 0;
-  const freeThreshold = SETTINGS?.shipping_free_threshold ?? 0;
-  const shipping = productTotal>=freeThreshold ? 0 : base;
-  const totalAmount = productTotal + shipping;
+  // 장바구니 화면과 동일한 계산(묶음 할인 포함)
+  const t = computeTotals(items.map(it => ({ base: it.basePrice, extra: it.extraPrice, qty: it.quantity, group: it.group })));
+  const productTotal = t.listSubtotal;   // 할인 전 상품금액 (주문상품 소계의 합과 일치)
+  const discount = t.discount;           // 묶음 할인액
+  const shipping = t.shipping;
+  const totalAmount = t.total;           // 실제 결제금액
 
   const orderId = crypto.randomUUID();
   let orderNumber = makeOrderNumber();
@@ -543,6 +642,7 @@ async function createPendingOrder(method){
       product_total: productTotal,
       shipping_fee: shipping,
       total_amount: totalAmount,
+      ...(discount > 0 ? { discount_amount: discount } : {}), // 할인 없는 주문은 컬럼 없이도 저장되도록
       payment_method: method,
       payment_status: "PENDING"
     });
@@ -575,7 +675,7 @@ async function createPendingOrder(method){
     return null;
   }
 
-  return { orderId, orderNumber, items, name, phone, email, productTotal, shipping, totalAmount };
+  return { orderId, orderNumber, items, name, phone, email, productTotal, discount, shipping, totalAmount };
 }
 
 async function startPayment(method){
@@ -651,6 +751,7 @@ function showOnsiteComplete(order){
           <div class="complete-box">
             <div class="summary-row"><span>받는 분</span><strong>${esc(order.name)}</strong></div>
             <div class="summary-row"><span>상품금액</span><strong>${won(order.productTotal)}</strong></div>
+            ${order.discount>0?`<div class="summary-row" style="color:#c0392b"><span>묶음 할인</span><strong>−${won(order.discount)}</strong></div>`:""}
             <div class="summary-row"><span>배송비</span><strong>${order.shipping===0?"무료":won(order.shipping)}</strong></div>
             <div class="summary-row total"><span>결제하실 금액</span><strong>${won(order.totalAmount)}</strong></div>
           </div>
@@ -698,6 +799,7 @@ function showComplete(order){
           <div class="complete-box">
             <div class="summary-row"><span>받는 분</span><strong>${esc(order.customer_name)}</strong></div>
             <div class="summary-row"><span>상품금액</span><strong>${won(order.product_total)}</strong></div>
+            ${order.discount_amount>0?`<div class="summary-row" style="color:#c0392b"><span>묶음 할인</span><strong>−${won(order.discount_amount)}</strong></div>`:""}
             <div class="summary-row"><span>배송비</span><strong>${order.shipping_fee===0?"무료":won(order.shipping_fee)}</strong></div>
             <div class="summary-row total"><span>총 결제금액</span><strong>${won(order.total_amount)}</strong></div>
           </div>
